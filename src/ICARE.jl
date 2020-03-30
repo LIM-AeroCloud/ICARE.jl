@@ -50,21 +50,23 @@ function ftp_download(
   dir::String = "."
 )
   # Define main folder for selected data type
-  caliopdir = "SPACEBORNE/CALIOP/"
+  caliopdir = "/SPACEBORNE/CALIOP/"
   datadir = @sprintf "%s.v%.2f" product version
   # Define dates in range
   years = [string(y) for y = Dates.year(startdate):Dates.year(enddate)]
   dates = [Dates.format(d, "yyyy_mm_dd") for d = startdate:Dates.Day(1):enddate]
-  # Connect to ICARE server
-  icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
-    username = user, password = password)
   ## Sync data files
   localfiles = String[]
   prog = pm.Progress(length(dates), "download...")
   for year in years, date in dates
+    # Define current remote directory from date
+    remotedir = joinpath(caliopdir, datadir, year, date)
     try
+      # Connect to ICARE server
+      icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
+        username = user, password = password)
       # Get all data files in date range
-      cd(icare, joinpath(caliopdir, datadir, year, date))
+      cd(icare, remotedir)
       remotefiles = readdir(icare)
       # Sync local folder structure with ftp server
       localdir = joinpath(dir, datadir, year, date)
@@ -75,9 +77,13 @@ function ftp_download(
           push!(localfiles, file)
         end
       end
-    catch
-      println("\n")
-      @warn "no data for $date"
+    catch err
+      if isdir(remotedir)
+        rethrow(err)
+      else
+        println("\n")
+        @warn "no data for $date"
+      end
     end
     # Monitor progress for progress bar
     pm.next!(prog, showvalues = [(:date,date)])
