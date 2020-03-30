@@ -55,3 +55,12 @@ created automatically.
 checked for file changes.**
 
 Returns a `Vector{String}` with all the file names of the downloaded files.
+
+
+---
+> **NOTE**
+>
+> Passwords containing special characters must be encoded with URI encoding, 
+> e.g., `%20` for space or `%21` for exclamation mark (`!`).
+
+---
