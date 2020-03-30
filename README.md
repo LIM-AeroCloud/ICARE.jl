@@ -11,8 +11,8 @@ The function may work for other data as well, but was only designed to downlaod
 CALIOP aerosol and cloud data. Try to change `caliopdir` in `ftp_download` and
 make it an arg or kwarg `maindir`.
 
-Install
--------
+Installation
+------------
 
 ICARE.jl is an unregistered Julia package, but can be 
 installed with the package manager:
@@ -64,3 +64,25 @@ Returns a `Vector{String}` with all the file names of the downloaded files.
 > e.g., `%20` for space or `%21` for exclamation mark (`!`).
 
 ---
+
+
+Example script
+--------------
+
+```julia
+import Pkg
+Pkg.activate("/Users/home/ICARE")
+
+import Dates.Date
+import ICARE
+
+# Download the first half of 2019 cloud profiles
+downloads = ICARE.ftp_download(
+  "pb866",
+  "PassWord%21",
+  "05kmCPro",
+  Date(2019),
+  Date(2019, 6, 30),
+  dir = "/Users/home/data/CALIOP/"
+)
+```
