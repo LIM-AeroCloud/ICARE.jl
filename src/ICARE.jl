@@ -51,9 +51,10 @@ function ftp_download(
   dir::String = ".",
   logfile::String = "ftp_download.log"
 )
-  # start file logger
+  # Initialise
   logio = open(logfile, "w+")
   logger = logg.SimpleLogger(logio, logg.Debug)
+  ftp.ftp_init()
   # Define main folder for selected data type
   caliopdir = "/SPACEBORNE/CALIOP/"
   datadir = @sprintf "%s.v%.2f" product version
@@ -64,6 +65,8 @@ function ftp_download(
   localfiles = String[]
   prog = pm.Progress(length(dates), "download...")
   for year in years, date in dates
+    # Only look for dates with matching years
+    startswith(date, year) || continue
     # Define current remote directory from date
     remotedir = joinpath(caliopdir, datadir, year, date)
     try
@@ -88,6 +91,8 @@ function ftp_download(
           flush(logio)
         end
       end
+      # Close current FTP connection to ICARE server
+      close(icare)
     catch err
       if isdir(remotedir)
         rethrow(err)
@@ -98,9 +103,11 @@ function ftp_download(
     end
     # Monitor progress for progress bar
     pm.next!(prog, showvalues = [(:date,date)])
-  end
+  end #loop over dates
+  # Clean-up
   pm.finish!(prog)
   close(logio)
+  ftp.ftp_cleanup()
 
   return localfiles
 end #function download
