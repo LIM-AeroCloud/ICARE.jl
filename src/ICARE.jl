@@ -10,6 +10,7 @@ module ICARE
 # Import Julia Packages and Types
 import FTPClient; const ftp = FTPClient
 import ProgressMeter; const pm = ProgressMeter
+import Logging; const logg = Logging
 import Dates
 import Dates: Date
 import Printf: @sprintf
@@ -47,8 +48,12 @@ function ftp_download(
   startdate::Date,
   enddate::Date,
   version::Float64 = 4.20;
-  dir::String = "."
+  dir::String = ".",
+  logfile::String = "ftp_download.log"
 )
+  # start file logger
+  logio = open(logfile, "w+")
+  logger = logg.SimpleLogger(logio, logg.Debug)
   # Define main folder for selected data type
   caliopdir = "/SPACEBORNE/CALIOP/"
   datadir = @sprintf "%s.v%.2f" product version
@@ -75,6 +80,12 @@ function ftp_download(
         if !isfile(joinpath(localdir, file))
           download(icare, file, joinpath(localdir, file))
           push!(localfiles, file)
+          # Log a task-specific message
+          logg.with_logger(logger) do
+            println(logio, file)
+            println(logio, "-> download completed at $(Dates.now())")
+          end
+          flush(logio)
         end
       end
     catch err
@@ -89,6 +100,7 @@ function ftp_download(
     pm.next!(prog, showvalues = [(:date,date)])
   end
   pm.finish!(prog)
+  close(logio)
 
   return localfiles
 end #function download
