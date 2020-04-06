@@ -114,6 +114,51 @@ end #function download
 
 
 """
+    function ftp_download(
+      user::String,
+      password::String,
+      product::String,
+      startdate::Date,
+      enddate::Date,
+      version::Float64 = 4.20;
+      dir::String = "."
+    )
+
+Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
+and `version` (e.g., `3.01` or `4.2`, default is `4.20`) from the ICARE server
+using your `user` login name and `password`.
+
+Data is downloaded for the specified time frame in the range `startdate` to `enddate`
+to the local directory `dir`, where `dir` is the main folder containing the data folder
+for `product` files. Folder structure in `dir` must be the same as on the ICARE server.
+
+**Files are not synced, missing files are downloaded, but existing files are not checked
+for file changes.**
+
+Returns a `Vector{String}` with all the file names of the downloaded files.
+"""
+function ftp_download(
+  user::String,
+  password::String,
+  product::String,
+  startdate::Date,
+  enddate::Date,
+  version::Float64 = 4.20;
+  dir::String = ".",
+  savelog::String = "ICAREdownloads.log",
+  warnlog::String = "ICAREwarnings.log",
+  cleandata::Union{Nothing,Bool} = nothing
+)
+  # Scan for available files on ICARE server,
+  # sync folder structure and find missing files to download
+  remotefiles, localfiles, misplacedfiles = setup_download(user, password,
+    product, startdate, enddate, version, dir=dir, warnlog=warnlog)
+  # Optionally delete misplaced files in local directories
+  rm_misplacedfiles(misplacedfiles, cleandata)
+end #function download
+
+
+"""
     setup_download(
       user::String,
       password::String,
@@ -232,25 +277,38 @@ with the following confirmation options:
   _previously skipped files are kept_
 - `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
 """
-function rm_misplacedfiles(misplacedfiles::Vector{String})
-  length(misplacedfiles) > 0 && @warn "misplaced files in local data folders detected"
-  for file in misplacedfiles
-    println("Delete $file?")
-    print("(y/n/remaining/all): ")
-    confirm = readline()
-    if startswith(lowercase(confirm), "y")
-      rm(file, recursive=true)
-    elseif lowercase(confirm) == "all"
-      rm.(misplacedfiles, recursive=true)
-      break
-    elseif lowercase(confirm) == "remaining"
-      i = findfirst(misplacedfiles.==file)
-      rm.(misplacedfiles[i:end], recursive=true)
-      break
-    elseif lowercase(confirm) == "none"
-      break
+function rm_misplacedfiles(misplacedfiles::Vector{String}, cleandata::Union{Nothing,Bool})
+  # Skip if no misplaced files exist
+  length(misplacedfiles) > 0 || return
+  if cleandata == nothing
+    # Warn of missing files and manually delete files depending on user input choice
+    @warn "misplaced files in local data folders detected"
+    # Loop over files and ask for deletion options
+    for file in misplacedfiles
+      println("Delete $file?")
+      print("(y/n/remaining/all): ")
+      confirm = readline()
+      if startswith(lowercase(confirm), "y")
+        # Delete current file
+        rm(file, recursive=true)
+      elseif lowercase(confirm) == "all"
+        # Delete ALL files
+        rm.(misplacedfiles, recursive=true)
+        break
+      elseif lowercase(confirm) == "remaining"
+        # Delete REMAINING files
+        i = findfirst(misplacedfiles.==file)
+        rm.(misplacedfiles[i:end], recursive=true)
+        break
+      elseif lowercase(confirm) == "none"
+        # DON'T delete REMAINING files
+        break
+      end
     end
+  elseif cleandata
+    # Delete all data, if cleandata flag is set
+    rm.(misplacedfiles, recursive=true)
   end
-end
+end #function rm_misplacedfiles
 
 end #module ICARE
