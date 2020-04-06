@@ -2,7 +2,11 @@ name = "ICARE"
 uuid = "d4da717d-1138-44a6-9758-4f5a9640abeb"
 authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 julia = "≥1.0"
+<<<<<<< HEAD
 version = "0.3.0-DEV"
+=======
+version = "0.2.1"
+>>>>>>> 0.2.1
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

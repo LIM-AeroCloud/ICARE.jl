@@ -210,7 +210,7 @@ function rm_misplacedfiles(misplacedfiles::Vector{String}, cleandata::Union{Noth
     # Loop over files and ask for deletion options
     for file in misplacedfiles
       println("Delete $file?")
-      print("(y/n/remaining/all): ")
+      print("(y/n/remaining/all/none): ")
       confirm = readline()
       if startswith(lowercase(confirm), "y")
         # Delete current file
@@ -236,6 +236,18 @@ function rm_misplacedfiles(misplacedfiles::Vector{String}, cleandata::Union{Noth
 end #function rm_misplacedfiles
 
 
+"""
+    download_data(
+      user::String,
+      password::String,
+      remotefiles::Vector{String},
+      localfiles::Vector{String},
+      savelog::String = "ICAREdownloads.log"
+    )
+
+Connect to ICARE server with `user` login name and `password` and download
+`remotefiles` to local directory as `localfiles`. Monitor progress in `savelog`.
+"""
 function download_data(
   user::String,
   password::String,
@@ -250,17 +262,21 @@ function download_data(
   ftp.ftp_init()
   icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
     username = user, password = password)
+  # Error on different remote and local file definitions
   length(remotefiles) ≠ length(localfiles) &&
     @error "Different number of local and remote files defined"
+  # Loop over remotefiles and download to local machine as localfiles
   tstart = Dates.now()
   @pm.showprogress 5 "download..." for (rem, loc) in zip(remotefiles, localfiles)
     download(icare, rem, loc)
+    # Log download process
     logg.with_logger(logger) do
       println(logio, basename(rem))
       println(logio, "-> download completed at $(Dates.now())")
     end
     flush(logio)
   end
+  # Log download time
   tend = Dates.now()
   logg.with_logger(logger) do
     tdiff = Dates.canonicalize(Dates.CompoundPeriod(tend - tstart))
