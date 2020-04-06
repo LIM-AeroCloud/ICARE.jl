@@ -1,10 +1,10 @@
 ICARE.jl
 ========
 
-A Julia package related for retrieving data from the 
+A Julia package for retrieving data from the 
 [AERIS/ICARE server](http://www.icare.univ-lille1.fr/).
 
-Currently only function `ftp_download` exists to retrieve missing CALIOP data 
+Use function `ftp_download` to retrieve missing CALIOP data 
 files in a specified timeframe. 
 
 The function may work for other data as well, but was only designed to downlaod 
@@ -37,8 +37,11 @@ function ftp_download(
   startdate::Date,
   enddate::Date,
   version::Float64 = 4.20;
-  dir::String = "."
-) -> remotefiles
+  dir::String = ".",
+  savelog::String = "ICAREdownloads.log",
+  warnlog::String = "ICAREwarnings.log",
+  cleandata::Union{Nothing,Bool} = nothing
+)
 ```
 
 Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
@@ -47,22 +50,34 @@ using your `user` login name and `password`.
 
 Data is downloaded for the specified time frame in the range `startdate` to `enddate`
 to the local directory `dir`, where `dir` is the main folder containing the data folder
-for `product` files. Folder structure in `dir` must be the same as on the ICARE server
-otherwise already existing files will not be found. However, missing folders will be 
-created automatically.
+for `product` files. Folder structure within `dir` is synced with ICARE.  
+Data is placed in the same folders as on the ICARE server; missing folders are created.
+If already existing folders contain any other files than hidden files or files
+also available on the ICARE server a warning is given with the option to delete those
+files. You are asked in the terminal for the following options:
 
-**Files are not synced, missing files are downloaded, but existing files are not 
-checked for file changes.**
+- `y`: current file is deleted
+- `n`: current file deletion is skipped
+- `all`: press at any time; __all files__ are deleted __even previously skipped files__
+- `remaining`: the current and __all remaining files__ in the list are deleted;
+  _previously skipped files are kept_
+- `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
 
-Returns a `Vector{String}` with all the file names of the downloaded files.
+Alternatively, you can set the `cleandata` kwarg to `true`/`false` to delete all/no
+data file without programme interuption.
+
+**Files are not synced with ICARE, missing files are downloaded, but existing files
+are not checked for file changes.**
+
+Downloaded files are logged in `ICAREdownloads.log`; warnings of missing ICARE data
+or additional local data files is given in `ICAREwarnings.log`.
 
 
 ---
 > **NOTE**
 >
-> Passwords containing special characters must be encoded with URI encoding, 
+> Passwords containing special characters must be encoded with URI encoding,  
 > e.g., `%20` for space or `%21` for exclamation mark (`!`).
-
 ---
 
 
@@ -77,12 +92,16 @@ import Dates.Date
 import ICARE
 
 # Download the first half of 2019 cloud profiles
-downloads = ICARE.ftp_download(
+dir = "/Users/home/data/CALIOP/"
+ICARE.ftp_download(
   "pb866",
   "PassWord%21",
   "05kmCPro",
   Date(2019),
   Date(2019, 6, 30),
-  dir = "/Users/home/data/CALIOP/"
+  dir = dir,
+  savelog = joinpath(dir, "ICAREdownloads.log"),
+  warnlog = joinpath(dir, "ICAREwarnings.log"),
+  cleandata = true
 )
 ```
