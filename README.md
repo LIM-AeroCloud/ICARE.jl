@@ -40,7 +40,8 @@ function ftp_download(
   dir::String = ".",
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
-  cleandata::Union{Nothing,Bool} = nothing
+  cleandata::Union{Nothing,Bool} = nothing,
+  download::Bool = true
 )
 ```
 
@@ -69,8 +70,16 @@ data file without programme interuption.
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
 
-Downloaded files are logged in `ICAREdownloads.log`; warnings of missing ICARE data
-or additional local data files is given in `ICAREwarnings.log`.
+Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
+or additional local data files is given in `ICAREwarnings.log` (or the specified
+alternative paths/names for the `savelog` and `warnlog` files).
+
+If `download` is set to `false`, `ftp_download` only checks for available
+additional data files on the ICARE server in the specified timeframe and reports
+them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced 
+files in the local directories are given in the `warnlog` file. Directories are
+not synced with ICARE, and files are not downloaded. This option is available to
+check your data coverage compared to the ICARE server.
 
 
 ---
@@ -95,7 +104,7 @@ import ICARE
 dir = "/Users/home/data/CALIOP/"
 ICARE.ftp_download(
   "pb866",
-  "PassWord%21",
+  "PassWord%231%21", #"PassWord#1!"
   "05kmCPro",
   Date(2019),
   Date(2019, 6, 30),
