@@ -70,15 +70,23 @@ function ftp_download(
   dir::String = ".",
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
-  cleandata::Union{Nothing,Bool} = nothing
+  cleandata::Union{Nothing,Bool} = nothing,
+  download::Bool=true
 )
   # Scan for available files on ICARE server,
   # sync folder structure and find missing files to download
   remotefiles, localfiles, misplacedfiles = setup_download(user, password,
-    product, startdate, enddate, version, dir=dir, warnlog=warnlog)
+    product, startdate, enddate, version, dir=dir, warnlog=warnlog, download=download)
   # Optionally delete misplaced files in local directories
   rm_misplacedfiles(misplacedfiles, cleandata)
-  download_data(user, password, remotefiles, localfiles, savelog)
+  if download
+    download_data(user, password, remotefiles, localfiles, savelog)
+  else
+    open(savelog, "w+") do f
+      println(f, "Additional files available for download on ICARE:\n")
+      foreach(file -> println(f, file), remotefiles)
+    end
+  end
 end #function download
 
 
@@ -111,7 +119,8 @@ function setup_download(
   enddate::Date,
   version::Float64 = 4.20;
   dir::String = ".",
-  warnlog::String = "ICAREwarnings.log"
+  warnlog::String = "ICAREwarnings.log",
+  download::Bool=true
 )
   # Start file logger
   logio = open(warnlog, "w+")
@@ -154,7 +163,7 @@ function setup_download(
         end
       else
         # Create missing folders from remote directory in local directory
-        mkpath(localdir)
+        download && mkpath(localdir)
         push!(remotefiles, joinpath.(remotedir, remfiles)...)
         push!(localfiles, joinpath.(localdir, remfiles)...)
       end
