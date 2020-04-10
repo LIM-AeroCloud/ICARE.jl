@@ -29,7 +29,9 @@ export ftp_download
       dir::String = ".",
       savelog::String = "ICAREdownloads.log",
       warnlog::String = "ICAREwarnings.log",
-      cleandata::Union{Nothing,Bool} = nothing
+      cleandata::Union{Nothing,Bool} = nothing,
+      download::Bool = true,
+      appendlog::Bool = false
     )
 
 Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
@@ -57,8 +59,18 @@ data file without programme interuption.
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
 
-Downloaded files are logged in `ICAREdownloads.log`; warnings of missing ICARE data
-or additional local data files is given in `ICAREwarnings.log`.
+Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
+or additional local data files is given in `ICAREwarnings.log` (or the specified
+alternative paths/names for the `savelog` and `warnlog` files). By default, new
+log files are created for every run of `ftp_download`, but existing log files can
+be appended, if `appendlog` is set to `true`.
+
+If `download` is set to `false`, `ftp_download` only checks for available
+additional data files on the ICARE server in the specified timeframe and reports
+them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
+files in the local directories are given in the `warnlog` file. Directories are
+not synced with ICARE, and files are not downloaded. This option is available to
+check your data coverage compared to the ICARE server.
 """
 function ftp_download(
   user::String,
@@ -71,18 +83,22 @@ function ftp_download(
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
   cleandata::Union{Nothing,Bool} = nothing,
-  download::Bool=true
+  download::Bool = true,
+  appendlog::Bool = false
 )
+  # Define read/write access to files based on appendlog
+  rwa = appendlog ? "a+" : "w+"
   # Scan for available files on ICARE server,
   # sync folder structure and find missing files to download
   remotefiles, localfiles, misplacedfiles = setup_download(user, password,
-    product, startdate, enddate, version, dir=dir, warnlog=warnlog, download=download)
+    product, startdate, enddate, version, rwa, dir=dir, warnlog=warnlog,
+    download=download)
   # Optionally delete misplaced files in local directories
   rm_misplacedfiles(misplacedfiles, cleandata)
   if download
-    download_data(user, password, remotefiles, localfiles, savelog)
+    download_data(user, password, remotefiles, localfiles, savelog, rwa)
   else
-    open(savelog, "w+") do f
+    open(savelog, rwa) do f
       println(f, "Additional files available for download on ICARE:\n")
       foreach(file -> println(f, file), remotefiles)
     end
@@ -97,7 +113,8 @@ end #function download
       product::String,
       startdate::Date,
       enddate::Date,
-      version::Float64 = 4.20;
+      version::Float64 = 4.20,
+      rwa::String = "w+";
       dir::String = ".",
       warnlog::String = "ICAREwarnings.log"
     ) -> remotefiles, localfiles, misplacedfiles
@@ -106,7 +123,8 @@ Connect to ICARE server with `user` login name and `password` and scan for avail
 files in the timeframe `startdate` to `enddate` for the `version` of the given `product`.
 Sync the folder structure to the local `dir`ectory and warn of missing data folders
 on the ICARE server or misplaced files in already existing local folders in the
-`warnlog` file.
+`warnlog` file. Existing log files are overwritten unless read/write access of files
+(`rwa`) is set to `"a+"`.
 
 Returns a `Vector{String}` with absolute folder path and file names for remote
 and local directory as well as for misplaced files in the local directories.
@@ -117,13 +135,14 @@ function setup_download(
   product::String,
   startdate::Date,
   enddate::Date,
-  version::Float64 = 4.20;
+  version::Float64 = 4.20,
+  rwa::String = "w+";
   dir::String = ".",
   warnlog::String = "ICAREwarnings.log",
   download::Bool=true
 )
   # Start file logger
-  logio = open(warnlog, "w+")
+  logio = open(warnlog, rwa)
   logger = logg.SimpleLogger(logio, logg.Debug)
   # Connect to ICARE server
   ftp.ftp_init()
@@ -251,21 +270,25 @@ end #function rm_misplacedfiles
       password::String,
       remotefiles::Vector{String},
       localfiles::Vector{String},
-      savelog::String = "ICAREdownloads.log"
+      savelog::String = "ICAREdownloads.log",
+      rwa::String = "w+"
     )
 
 Connect to ICARE server with `user` login name and `password` and download
 `remotefiles` to local directory as `localfiles`. Monitor progress in `savelog`.
+Old log files are overwritten unless read/write access to files (`rwa`) is set to
+`"a+"`.
 """
 function download_data(
   user::String,
   password::String,
   remotefiles::Vector{String},
   localfiles::Vector{String},
-  savelog::String = "ICAREdownloads.log"
+  savelog::String = "ICAREdownloads.log",
+  rwa::String = "w+"
 )
   # Start file logger
-  logio = open(savelog, "w+")
+  logio = open(savelog, rwa)
   logger = logg.SimpleLogger(logio, logg.Debug)
   # Connect to ICARE server
   ftp.ftp_init()

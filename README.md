@@ -41,7 +41,8 @@ function ftp_download(
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
   cleandata::Union{Nothing,Bool} = nothing,
-  download::Bool = true
+  download::Bool = true,
+  appendlog::Bool = false
 )
 ```
 
@@ -72,11 +73,13 @@ are not checked for file changes.**
 
 Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
 or additional local data files is given in `ICAREwarnings.log` (or the specified
-alternative paths/names for the `savelog` and `warnlog` files).
+alternative paths/names for the `savelog` and `warnlog` files). By default, new
+log files are created for every run of `ftp_download`, but existing log files can
+be appended, if `appendlog` is set to `true`.
 
 If `download` is set to `false`, `ftp_download` only checks for available
 additional data files on the ICARE server in the specified timeframe and reports
-them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced 
+them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
 files in the local directories are given in the `warnlog` file. Directories are
 not synced with ICARE, and files are not downloaded. This option is available to
 check your data coverage compared to the ICARE server.
