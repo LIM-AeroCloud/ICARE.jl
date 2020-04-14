@@ -75,6 +75,7 @@ function ftp_download(
   prevsession = init_restart(savelog)
   # Define read/write access to log files based on appendlog
   rwa = appendlog || !isempty(prevsession) ? "a+" : "w+"
+
   if isempty(prevsession) # new download session
     # Scan for available files on ICARE server,
     # sync folder structure and find missing files to download
@@ -84,10 +85,6 @@ function ftp_download(
     # Create restart file
     CSV.write(splitext(savelog)[1]*".dsl",
       DataFrame(remote = remotefiles, home = localfiles))
-    # open(splitext(savelog)[1]*".dsl", "w+") do f
-    #   println(f, "remote,home")
-    #   foreach((r,l) -> println(f, r, ",", l), remotefiles, localfiles)
-    # end
     # Optionally delete misplaced files in local directories
     rm_misplacedfiles(misplacedfiles, cleandata)
   else # continue previous download session
@@ -96,9 +93,20 @@ function ftp_download(
   if download
     download_data(user, password, remotefiles, localfiles, savelog, rwa)
   else
-    open(savelog, rwa) do f
-      println(f, "Additional files available for download on ICARE:\n")
-      foreach(file -> println(f, file), remotefiles)
+    if isempty(remotefiles)
+      open(savelog, rwa) do f
+        println(f, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+        println(f, "No data available for download on ICARE\nin the specified timeframe.")
+
+        println(f, "____________________________________________________________")
+      end
+    else
+      open(savelog, rwa) do f
+        println(f, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+        println(f, "Additional files available for download on ICARE:\n")
+        foreach(file -> println(f, file), remotefiles)
+        println(f, "____________________________________________________________")
+      end
     end
   end
   rm(splitext(savelog)[1]*".dsl")
@@ -153,6 +161,7 @@ function setup_download(
   # Define dates in range
   years = [string(y) for y = Dates.year(startdate):Dates.year(enddate)]
   dates = [Dates.format(d, "yyyy_mm_dd") for d = startdate:Dates.Day(1):enddate]
+  missingdates = String[]
   ## Sync data files
   remotefiles = String[]; localfiles = String[]; misplacedfiles = String[]
   prog = pm.Progress(length(dates), "setup...")
@@ -189,10 +198,7 @@ function setup_download(
       if isdir(remotedir)
         rethrow(err)
       else
-        logg.with_logger(logger) do
-          println(logio, "no data for $date")
-        end
-        flush(logio)
+        push!(missingdates, date)
         isdir(localdir) && push!(misplacedfiles, localdir)
       end
     end
@@ -205,10 +211,19 @@ function setup_download(
   close(icare)
   ftp.ftp_cleanup()
   # Warn of misplaced files in log file
-  length(misplacedfiles) > 0 && logg.with_logger(logger) do
-    println(logio, "\nThe following misplaced files have been detected in local data folders:")
-    foreach(x -> println(logio, x), misplacedfiles)
+  isempty(missingdates) && isempty(misplacedfiles) || topline(logio, logger)
+  logg.with_logger(logger) do
+    if !isempty(missingdates)
+      println(logio, "No available data for the following dates:")
+      foreach(x -> println(logio, x), missingdates)
+    end
+    if !isempty(misplacedfiles)
+      println(logio,
+        "\nThe following misplaced files have been detected in local data folders:")
+      foreach(x -> println(logio, x), misplacedfiles)
+    end
   end
+  isempty(missingdates) && isempty(misplacedfiles) || bottomline(logio, logger)
   close(logio)
 
   return remotefiles, localfiles, misplacedfiles
@@ -289,6 +304,7 @@ function download_data(
   # Start file logger
   logio = open(savelog, rwa)
   logger = logg.SimpleLogger(logio, logg.Debug)
+  topline(logio, logger)
   # Connect to ICARE server
   ftp.ftp_init()
   icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
@@ -311,10 +327,22 @@ function download_data(
   tend = Dates.now()
   logg.with_logger(logger) do
     tdiff = Dates.canonicalize(Dates.CompoundPeriod(tend - tstart))
-    println(logio, "\ndownload took $(join(tdiff.periods[1:min(2,length(tdiff.periods))], ", "))")
+    isempty(remotefiles) ? println(logio, "no download performed") : println(logio,
+      "\ndownload took $(join(tdiff.periods[1:min(2,length(tdiff.periods))], ", "))")
   end
   # Clean-up
   close(icare)
   ftp.ftp_cleanup()
+  bottomline(logio, logger)
   close(logio)
 end #function download_data
+
+
+topline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
+  println(logio, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+end
+
+
+bottomline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
+  println(logio, "____________________________________________________________")
+end
