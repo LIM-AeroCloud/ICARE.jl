@@ -2,8 +2,8 @@
 # Module ICARE
 
 Module related to retrieving data from the AERIS/ICARE server (http://www.icare.univ-lille1.fr/).
-Currently only function `ftp_download` exists to retrieve missing CALIOP data files
-in a specified timeframe.
+Currently, the only exported function is `ftp_download` to retrieve missing
+CALIOP data files in a specified timeframe.
 """
 module ICARE
 

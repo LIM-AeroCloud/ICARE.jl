@@ -53,6 +53,9 @@ them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
 files in the local directories are given in the `warnlog` file. Directories are
 not synced with ICARE, and files are not downloaded. This option is available to
 check your data coverage compared to the ICARE server.
+
+If `ftp_download` is prematurely interrupted, you will be prompted to restart your
+old session at the next call of `ftp_download`.
 """
 function ftp_download(
   user::String,
@@ -99,7 +102,7 @@ function ftp_download(
     end
   end
   rm(splitext(savelog)[1]*".dsl")
-end #function download
+end #function ftp_download
 
 
 """

@@ -1,5 +1,14 @@
 # Routines related to restarting a download session
 
+
+"""
+    init_restart(savelog::String) -> DateFrame
+
+Check for existing download session logs (dsl files), and initiate a restart
+after user confirmation. The re-entry point of the download is based on the previous
+`savelog`. Returns a `DataFrame` with the file names on the `remote` and `home`
+server.
+"""
 function init_restart(savelog::String)
   # Scan for download session logs and select a session
   dir = isempty(dirname(savelog)) ? "." : dirname(savelog)
@@ -44,8 +53,17 @@ function init_restart(savelog::String)
     i = isempty(lastsave) ? 1 : findfirst(lastsave .== basename.(downloads.remote)) + 1
     downloads[i:end,:]
   end
-end
+end #function init_restart
 
+
+"""
+    confirm(answer::String, session::String, later::Bool=false) -> String
+
+Based on the user input `answer`, return either the file name of the previous
+`session` or an empty `String` and remove the previous download session log,
+if `answer` was no (`"n"`). If `later` is set to `true`, `"l"` is allowed as
+user input, which is like no, but without removing the `dsl` file.
+"""
 function confirm(answer::String, session::String, later::Bool=false)
   if startswith(lowercase(answer), "y")
     session
@@ -59,4 +77,4 @@ function confirm(answer::String, session::String, later::Bool=false)
     print("Please select 'y', 'n' (or 'l' if later is allowed): ")
     confirm(readline(), session, later)
   end
-end
+end #function confirm

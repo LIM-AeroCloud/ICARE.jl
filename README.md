@@ -23,7 +23,7 @@ pkg> add https://github.com/pb866/ICARE.jl.git
 pkg> instantiate
 pkg> ← (backspace)
 julia> import ICARE
-julia> Dates.Date
+julia> import Dates.Date
 ```
 
 Exported functions
@@ -66,30 +66,49 @@ files. You are asked in the terminal for the following options:
 - `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
 
 Alternatively, you can set the `cleandata` kwarg to `true`/`false` to delete all/no
-data file without programme interuption.
+data file without programme interuption. Already existing local folders not available
+on ICARE are ignored.
 
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
 
 Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
-or additional local data files is given in `ICAREwarnings.log` (or the specified
+or additional local data files are given in `ICAREwarnings.log` (or the specified
 alternative paths/names for the `savelog` and `warnlog` files). By default, new
 log files are created for every run of `ftp_download`, but existing log files can
 be appended, if `appendlog` is set to `true`.
+
+Furthermore, a temporary `dsl` (download session log) file is created, which is 
+deleted after a successful run. In case of a premature interuption of `ftp_download`,
+the `dsl` file is used to recover the last session and continue the downloads.  
+In this case the user is prompted to the following options for a restart:
+
+- `y`: Restart the previous download session. This always appends the previous
+  `savelog` file of the same name as the `dsl` file
+- `n`: This continues the current download session and deletes the `dsl` file
+  with the download history of a previously interrupted session
+- `l` (option is only available, if the `dsl` file name is not the same as the 
+  `savelog` file name of the current session): If a session was previously interrupted,
+  but you started a different download session (based on the `savelog` file name),
+  you can continue the current download session, but keep the `dsl` file for a later
+  recovery of the session
+
+
 
 If `download` is set to `false`, `ftp_download` only checks for available
 additional data files on the ICARE server in the specified timeframe and reports
 them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
 files in the local directories are given in the `warnlog` file. Directories are
-not synced with ICARE, and files are not downloaded. This option is available to
-check your data coverage compared to the ICARE server.
+not synced with ICARE, and files are not downloaded. However, additional files in
+the local directories can be removed. This option is available to check your data 
+coverage compared to the ICARE server.
 
 
 ---
-> **NOTE**
+> :information_source: **NOTE**
 >
 > Passwords containing special characters must be encoded with URI encoding,  
-> e.g., `%20` for space or `%21` for exclamation mark (`!`).
+> e.g., `%21` for exclamation mark (`!`) or `%23` for hash or number sign (`#`).
 ---
 
 
