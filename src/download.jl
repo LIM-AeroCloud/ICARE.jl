@@ -158,6 +158,15 @@ function setup_download(
   # Define main folder for selected data type
   caliopdir = "/SPACEBORNE/CALIOP/"
   datadir = @sprintf "%s.v%.2f" product version
+  # Test connection and product name
+  try cd(icare, caliopdir)
+  catch
+    @error "bad connection to ICARE server"
+  end
+  try cd(icare, joinpath(caliopdir, datadir))
+  catch
+    @error "incorrect product name or version number"
+  end
   # Define dates in range
   years = [string(y) for y = Dates.year(startdate):Dates.year(enddate)]
   dates = [Dates.format(d, "yyyy_mm_dd") for d = startdate:Dates.Day(1):enddate]
