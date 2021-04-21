@@ -2,7 +2,7 @@ name = "ICARE"
 uuid = "d4da717d-1138-44a6-9758-4f5a9640abeb"
 authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 julia = "≥1.0"
-version = "0.3.0"
+version = "0.3.1"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
