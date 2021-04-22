@@ -49,7 +49,7 @@ function init_restart(savelog::String)
       end
     catch; ""
     end
-    downloads = CSV.read(session)
+    downloads = CSV.read(session, DataFrame)
     i = isempty(lastsave) ? 1 : findfirst(lastsave .== basename.(downloads.remote)) + 1
     downloads[i:end,:]
   end
