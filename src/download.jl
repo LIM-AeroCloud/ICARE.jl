@@ -95,14 +95,14 @@ function ftp_download(
   else
     if isempty(remotefiles)
       open(savelog, rwa) do f
-        println(f, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+        println(f, "____________________________________________________________")
         println(f, "No data available for download on ICARE\nin the specified timeframe.")
 
         println(f, "____________________________________________________________")
       end
     else
       open(savelog, rwa) do f
-        println(f, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+        println(f, "____________________________________________________________")
         println(f, "Additional files available for download on ICARE:\n")
         foreach(file -> println(f, file), remotefiles)
         println(f, "____________________________________________________________")
