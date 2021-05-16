@@ -95,17 +95,17 @@ function ftp_download(
   else
     if isempty(remotefiles)
       open(savelog, rwa) do f
-        println(f, "____________________________________________________________")
+        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
         println(f, "No data available for download on ICARE\nin the specified timeframe.")
 
-        println(f, "____________________________________________________________")
+        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
       end
     else
       open(savelog, rwa) do f
-        println(f, "____________________________________________________________")
+        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
         println(f, "Additional files available for download on ICARE:\n")
         foreach(file -> println(f, file), remotefiles)
-        println(f, "____________________________________________________________")
+        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
       end
     end
   end
@@ -348,10 +348,10 @@ end #function download_data
 
 
 topline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
-  println(logio, "̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅")
+  println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
 end
 
 
 bottomline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
-  println(logio, "____________________________________________________________")
+  println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
 end
