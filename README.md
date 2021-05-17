@@ -5,7 +5,7 @@ A Julia package for retrieving data from the
 [AERIS/ICARE server](http://www.icare.univ-lille1.fr/).
 
 Use function `ftp_download` to retrieve missing CALIOP data 
-files in a specified timeframe. 
+files in a specified time frame. 
 
 The function may work for other data as well, but was only designed to downlaod 
 CALIOP aerosol and cloud data. Try to change `caliopdir` in `ftp_download` and
@@ -20,7 +20,6 @@ installed with the package manager:
 ```julia
 julia> ]
 pkg> add https://github.com/pb866/ICARE.jl.git
-pkg> instantiate
 pkg> ← (backspace)
 julia> import ICARE
 julia> import Dates.Date
@@ -42,7 +41,8 @@ function ftp_download(
   warnlog::String = "ICAREwarnings.log",
   cleandata::Union{Nothing,Bool} = nothing,
   download::Bool = true,
-  appendlog::Bool = false
+  appendlog::Bool = false,
+  restart::String = "ask"
 )
 ```
 
@@ -93,7 +93,9 @@ In this case the user is prompted to the following options for a restart:
   you can continue the current download session, but keep the `dsl` file for a later
   recovery of the session
 
-
+By default, user input occurs via the REPL/terminal. For uninterrupted sessions,
+e.g. for ICARE runs in the background, the above choices can be passed to
+`ftp_download` with the keyword argument `restart`.
 
 If `download` is set to `false`, `ftp_download` only checks for available
 additional data files on the ICARE server in the specified timeframe and reports
