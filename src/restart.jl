@@ -23,7 +23,7 @@ function init_restart(savelog::String, restart::String, dir::String=".")
     files[1]
   elseif length(files) > 1
     sel = findfirst(basename.(files) .== deffile)
-    if isnothing(sel)
+    if sel === nothing
       println("Select session to restart:\n0 — no restart")
       println.(join.(enumerate(files), " — "))
       sel = parse(Int, readline())
@@ -60,7 +60,11 @@ function init_restart(savelog::String, restart::String, dir::String=".")
     catch; ""
     end
     downloads = CSV.read(session, DataFrame)
-    i = isempty(lastsave) ? 1 : findfirst(lastsave .== basename.(downloads.remote)) + 1
+    i = try
+      findfirst(lastsave .== basename.(downloads.remote)) + 1
+    catch
+      1
+    end
     downloads[i:end,:]
   end #subset selection
 end #function init_restart
