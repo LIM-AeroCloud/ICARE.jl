@@ -2,32 +2,42 @@
 
 
 """
-    init_restart(savelog::String) -> DateFrame
+    init_restart(savelog::String, restart::String, dir::String=".") -> DateFrame
 
-Check for existing download session logs (dsl files), and initiate a restart
-after user confirmation. The re-entry point of the download is based on the previous
-`savelog`. Returns a `DataFrame` with the file names on the `remote` and `home`
-server.
+Check for existing download session logs (dsl files) first in `dir`, then in the
+directory of `savelog`, and initiate a restart after user confirmation.
+If `restart` is set to `"ask"` (default), user confirmation is through the REPL/terminal,
+but can be given by `restart` (values `"y"`, `"n"` or `"l"`) to ensure an uninterrupted run.
+The re-entry point of the download is based on the previous `savelog` and an existing
+`dsl` file. Returns a `DataFrame` with the file names on the `remote` and `home` server.
 """
-function init_restart(savelog::String)
-  # Scan for download session logs and select a session
-  dir = isempty(dirname(savelog)) ? "." : dirname(savelog)
-  files = joinpath.(dir, readdir(dir)[endswith.(readdir(dir), ".dsl")])
+function init_restart(savelog::String, restart::String, dir::String=".")
+  # Scan for download session logs
+  files = [joinpath.(dir, filter(endswith(".dsl"), readdir(dir)));
+    joinpath.(dirname(savelog), filter(endswith(".dsl"), readdir(dirname(savelog))))]
+  # Define default dsl file
+  deffile = basename(splitext(savelog)[1]*".dsl")
+  # Seletct a session
   isempty(files) && return DataFrame(home = String[], remote = String[])
   session = if length(files) == 1
     files[1]
   elseif length(files) > 1
-    println("Select session to restart:\n0 — no restart")
-    println.(join.(enumerate(files), " — "))
-    sel = parse(Int, readline())
+    sel = findfirst(basename.(files) .== deffile)
+    if isnothing(sel)
+      println("Select session to restart:\n0 — no restart")
+      println.(join.(enumerate(files), " — "))
+      sel = parse(Int, readline())
+    end
     try files[sel]
     catch; ""
     end
   else
     ""
-  end
+  end #session selection
   # Confirm actions
-  session = if splitext(basename(session))[1] == splitext(basename(savelog))[1]
+  session = if restart ≠ "ask"
+    confirm(restart, session)
+  elseif session == deffile
     println("Resume last download session (y/n)?")
     println("- 'y' resume old download session, abort new download")
     println("- 'n' delete old download session log, continue current session")
@@ -38,7 +48,7 @@ function init_restart(savelog::String)
     println("- 'n' delete old download session log, continue current session")
     println("- 'l' keep old download session log for later use, continue current session")
     confirm(readline(), session, true)
-  end
+  end #confirmation
   # Select subset of remaining files to download
   if isempty(session)
     DataFrame(home = String[], remote = String[])
@@ -52,7 +62,7 @@ function init_restart(savelog::String)
     downloads = CSV.read(session, DataFrame)
     i = isempty(lastsave) ? 1 : findfirst(lastsave .== basename.(downloads.remote)) + 1
     downloads[i:end,:]
-  end
+  end #subset selection
 end #function init_restart
 
 
