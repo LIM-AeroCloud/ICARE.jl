@@ -36,7 +36,7 @@ files. You are asked in the terminal for the following options:
 - `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
 
 Alternatively, you can set the `cleandata` kwarg to `true`/`false` to delete all/no
-data file without programme interuption.
+data file without programme interruption.
 
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
@@ -55,7 +55,14 @@ not synced with ICARE, and files are not downloaded. This option is available to
 check your data coverage compared to the ICARE server.
 
 If `ftp_download` is prematurely interrupted, you will be prompted to restart your
-old session at the next call of `ftp_download`.
+old session at the next call of `ftp_download`. Alternatively, you can set the
+behaviour of `ftp_download` with the keyword argument `restart` and the following
+options for an uninterrupted run:
+
+- `"y"`: Continue previously interrupted run. Use the same `savelog` file to avoid
+  errors or problems.
+- `"n"`: Continue with current run and delete history of previously interrupted session.
+- `"l"`: Continue with current run, but save history of previously interrupted session.
 """
 function ftp_download(
   user::String,
@@ -69,10 +76,15 @@ function ftp_download(
   warnlog::String = "ICAREwarnings.log",
   cleandata::Union{Nothing,Bool} = nothing,
   download::Bool = true,
-  appendlog::Bool = false
+  appendlog::Bool = false,
+  restart::String = "ask"
 )
+  # Save log files to dir unless a path is given
+  basename(savelog) == savelog && (savelog = joinpath(dir, savelog))
+  basename(warnlog) == savelog && (warnlog = joinpath(dir, warnlog))
+
   # Check for possible continuation of previous downloads from donwload session log
-  prevsession = init_restart(savelog)
+  prevsession = init_restart(savelog, restart, dir)
   # Define read/write access to log files based on appendlog
   rwa = appendlog || !isempty(prevsession) ? "a+" : "w+"
 
@@ -127,7 +139,7 @@ end #function ftp_download
     ) -> remotefiles, localfiles, misplacedfiles
 
 Connect to ICARE server with `user` login name and `password` and scan for available
-files in the timeframe `startdate` to `enddate` for the `version` of the given `product`.
+files in the time frame `startdate` to `enddate` for the `version` of the given `product`.
 Sync the folder structure to the local `dir`ectory and warn of missing data folders
 on the ICARE server or misplaced files in already existing local folders in the
 `warnlog` file. Existing log files are overwritten unless read/write access of files
@@ -220,7 +232,7 @@ function setup_download(
   close(icare)
   ftp.ftp_cleanup()
   # Warn of misplaced files in log file
-  isempty(missingdates) && isempty(misplacedfiles) || topline(logio, logger)
+  isempty(missingdates) && isempty(misplacedfiles) || sepline(logio, logger)
   logg.with_logger(logger) do
     if !isempty(missingdates)
       println(logio, "No available data for the following dates:")
@@ -232,7 +244,7 @@ function setup_download(
       foreach(x -> println(logio, x), misplacedfiles)
     end
   end
-  isempty(missingdates) && isempty(misplacedfiles) || bottomline(logio, logger)
+  isempty(missingdates) && isempty(misplacedfiles) || sepline(logio, logger)
   close(logio)
 
   return remotefiles, localfiles, misplacedfiles
@@ -313,7 +325,7 @@ function download_data(
   # Start file logger
   logio = open(savelog, rwa)
   logger = logg.SimpleLogger(logio, logg.Debug)
-  topline(logio, logger)
+  sepline(logio, logger)
   # Connect to ICARE server
   ftp.ftp_init()
   icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
@@ -342,16 +354,16 @@ function download_data(
   # Clean-up
   close(icare)
   ftp.ftp_cleanup()
-  bottomline(logio, logger)
+  sepline(logio, logger)
   close(logio)
 end #function download_data
 
 
-topline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
-  println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-end
+"""
+    sepline(logio::IOStream, logger::logg.SimpleLogger)
 
-
-bottomline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
+Print a separator line to the stream `logio` using the `logger`.
+"""
+sepline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
   println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
 end
