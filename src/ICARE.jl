@@ -15,7 +15,8 @@ import Dates
 import Dates: Date
 import Printf: @sprintf
 import CSV
-import DataFrames.DataFrame
+import DataFrames; const df = DataFrames
+import DataFrames: DataFrame
 
 # Export functions
 export ftp_download

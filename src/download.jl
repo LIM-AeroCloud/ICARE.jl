@@ -100,7 +100,7 @@ function ftp_download(
     # Optionally delete misplaced files in local directories
     rm_misplacedfiles(misplacedfiles, cleandata)
   else # continue previous download session
-    remotefiles, localfiles = eachcol(prevsession)
+    remotefiles, localfiles = df.eachcol(prevsession)
   end
   if download
     download_data(user, password, remotefiles, localfiles, savelog, rwa)
