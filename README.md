@@ -22,7 +22,6 @@ julia> ]
 pkg> add https://github.com/pb866/ICARE.jl.git
 pkg> ← (backspace)
 julia> import ICARE
-julia> import Dates.Date
 ```
 
 Exported functions
@@ -33,9 +32,9 @@ function ftp_download(
   user::String,
   password::String,
   product::String,
-  startdate::Date,
-  enddate::Date,
-  version::Float64 = 4.20;
+  startdate::Int,
+  enddate::Int=-1;
+  version::Float64 = 4.20,
   dir::String = ".",
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
@@ -50,9 +49,34 @@ Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01k
 and `version` (e.g., `3.01` or `4.2`, default is `4.20`) from the ICARE server
 using your `user` login name and `password`.
 
-Data is downloaded for the specified time frame in the range `startdate` to `enddate`
-to the local directory `dir`, where `dir` is the main folder containing the data folder
-for `product` files. Folder structure within `dir` is synced with ICARE.  
+---
+> :information_source: **NOTE**
+>
+> Passwords containing special characters must be encoded with URI encoding,  
+> e.g., `%21` for exclamation mark (`!`) or `%23` for hash or number sign (`#`).
+---
+
+Data is downloaded for the specified time frame in the range `startdate` to `enddate`;
+`startdate` and `enddate` are positiv integers in the date format `"yyyymmdd"`.
+Months (`"mm"`) or month and days (`"mmdd"`) can be missing and are substituted with the first
+possible date for the `startdate` and last possible date for the `enddate`.
+If `enddate` is not specified, it is assigned the same value as `startdate`, but can
+actually be a different date, when the day and/or month is not specified as the value
+is assigned prior to the conversion to dates.
+
+#### Examples
+
+- `startdate = 2010`: download all data available in 2006 (from 2010-01-01 to 2010-12-31)
+- `startdate = 201001`: download all data from January 2010 (from 2010-01-01 to 2010-01-31)
+- `startdate = 20100101`: download data only for 2010-01-01
+- `startdate = 2010`, `enddate = 201006`: download first half of 2010 (from 2010-01-01 to 2010-06-30)
+- `startdate = 20100103`, `enddate = 20100105`: download data from 2010-01-03 to 2010-01-05
+
+
+### Data structure
+
+Data are downloaded to the local directory `dir`, where `dir` is the main folder containing the data folder
+for `product` files. Folder structure within `dir` is synced with ICARE.
 Data is placed in the same folders as on the ICARE server; missing folders are created.
 If already existing folders contain any other files than hidden files or files
 also available on the ICARE server a warning is given with the option to delete those
@@ -66,11 +90,13 @@ files. You are asked in the terminal for the following options:
 - `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
 
 Alternatively, you can set the `cleandata` kwarg to `true`/`false` to delete all/no
-data file without programme interuption. Already existing local folders not available
-on ICARE are ignored.
+data file without programme interruption.
 
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
+
+
+### Logging and recovery
 
 Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
 or additional local data files are given in `ICAREwarnings.log` (or the specified
@@ -98,20 +124,12 @@ e.g. for ICARE runs in the background, the above choices can be passed to
 `ftp_download` with the keyword argument `restart`.
 
 If `download` is set to `false`, `ftp_download` only checks for available
-additional data files on the ICARE server in the specified timeframe and reports
+additional data files on the ICARE server in the specified time frame and reports
 them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
 files in the local directories are given in the `warnlog` file. Directories are
 not synced with ICARE, and files are not downloaded. However, additional files in
 the local directories can be removed. This option is available to check your data 
 coverage compared to the ICARE server.
-
-
----
-> :information_source: **NOTE**
->
-> Passwords containing special characters must be encoded with URI encoding,  
-> e.g., `%21` for exclamation mark (`!`) or `%23` for hash or number sign (`#`).
----
 
 
 Example script
@@ -124,14 +142,13 @@ Pkg.activate("/Users/home/ICARE")
 import Dates.Date
 import ICARE
 
-# Download the first half of 2019 cloud profiles
+# Download all data from the year 2010
 dir = "/Users/home/data/CALIOP/"
 ICARE.ftp_download(
   "pb866",
   "PassWord%231%21", #"PassWord#1!"
   "05kmCPro",
-  Date(2019),
-  Date(2019, 6, 30),
+  2010,
   dir = dir,
   savelog = joinpath(dir, "ICAREdownloads.log"),
   warnlog = joinpath(dir, "ICAREwarnings.log"),
