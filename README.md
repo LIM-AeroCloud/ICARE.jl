@@ -66,11 +66,11 @@ is assigned prior to the conversion to dates.
 
 #### Examples
 
-- `startdate = 2010`: download all data available in 2006 (from 2010-01-01 to 2010-12-31)
-- `startdate = 201001`: download all data from January 2010 (from 2010-01-01 to 2010-01-31)
-- `startdate = 20100101`: download data only for 2010-01-01
-- `startdate = 2010`, `enddate = 201006`: download first half of 2010 (from 2010-01-01 to 2010-06-30)
-- `startdate = 20100103`, `enddate = 20100105`: download data from 2010-01-03 to 2010-01-05
+- startdate = `2010`: download all data available in 2006 (from 2010-01-01 to 2010-12-31)
+- startdate = `201001`: download all data from January 2010 (from 2010-01-01 to 2010-01-31)
+- startdate = `20100101`: download data only for 2010-01-01
+- startdate, enddate = `2010, 201006`: download first half of 2010 (from 2010-01-01 to 2010-06-30)
+- startdate, enddate = `20100103, 20100105`: download data from 2010-01-03 to 2010-01-05
 
 
 ### Data structure
