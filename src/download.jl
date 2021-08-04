@@ -1,27 +1,48 @@
 # Routines related to downloading ICARE data and folder syncing with ICARE
 
 """
-    ftp_download(
+    function ftp_download(
       user::String,
       password::String,
       product::String,
-      startdate::Date,
-      enddate::Date,
-      version::Float64 = 4.20;
+      startdate::Int,
+      enddate::Int=-1;
+      version::Float64 = 4.20,
       dir::String = ".",
       savelog::String = "ICAREdownloads.log",
       warnlog::String = "ICAREwarnings.log",
       cleandata::Union{Nothing,Bool} = nothing,
       download::Bool = true,
-      appendlog::Bool = false
+      appendlog::Bool = false,
+      restart::String = "ask"
     )
 
 Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
 and `version` (e.g., `3.01` or `4.2`, default is `4.20`) from the ICARE server
 using your `user` login name and `password`.
 
-Data is downloaded for the specified time frame in the range `startdate` to `enddate`
-to the local directory `dir`, where `dir` is the main folder containing the data folder
+# Select date range
+
+Data is downloaded for the specified time frame in the range `startdate` to `enddate`;
+`startdate` and `enddate` are positiv integers in the date format `"yyyymmdd"`.
+Months (`"mm"`) or month and days (`"mmdd"`) can be missing and are substituted with the first
+possible date for the `startdate` and last possible date for the `enddate`.
+If `enddate` is not specified, it is assigned the same value as `startdate`, but can
+actually be a different date, when the day and/or month is not specified as the value
+is assigned prior to the conversion to dates.
+
+## Examples
+
+- `startdate = 2010`: download all data available in 2006 (from 2010-01-01 to 2010-12-31)
+- `startdate = 201001`: download all data from January 2010 (from 2010-01-01 to 2010-01-31)
+- `startdate = 20100101`: download data only for 2010-01-01
+- `startdate = 2010`, `enddate = 201006`: download first half of 2010 (from 2010-01-01 to 2010-06-30)
+- `startdate = 20100103`, `enddate = 20100105`: download data from 2010-01-03 to 2010-01-05
+
+
+# Data structure
+
+Data are downloaded to the local directory `dir`, where `dir` is the main folder containing the data folder
 for `product` files. Folder structure within `dir` is synced with ICARE.
 Data is placed in the same folders as on the ICARE server; missing folders are created.
 If already existing folders contain any other files than hidden files or files
@@ -40,6 +61,9 @@ data file without programme interruption.
 
 **Files are not synced with ICARE, missing files are downloaded, but existing files
 are not checked for file changes.**
+
+
+# Logging and recovery
 
 Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
 or additional local data files is given in `ICAREwarnings.log` (or the specified
@@ -68,9 +92,9 @@ function ftp_download(
   user::String,
   password::String,
   product::String,
-  startdate::Date,
-  enddate::Date,
-  version::Float64 = 4.20;
+  startdate::Int,
+  enddate::Int=-1;
+  version::Float64 = 4.20,
   dir::String = ".",
   savelog::String = "ICAREdownloads.log",
   warnlog::String = "ICAREwarnings.log",
@@ -79,6 +103,10 @@ function ftp_download(
   appendlog::Bool = false,
   restart::String = "ask"
 )
+  # Convert date range to dates
+  enddate > 0 || (enddate = startdate)
+  startdate, enddate = convertdates(startdate, enddate)
+
   # Save log files to dir unless a path is given
   basename(savelog) == savelog && (savelog = joinpath(dir, savelog))
   basename(warnlog) == savelog && (warnlog = joinpath(dir, warnlog))
@@ -367,3 +395,27 @@ Print a separator line to the stream `logio` using the `logger`.
 sepline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
   println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
 end
+
+
+
+"""
+    convertdates(startdate::Int, enddate::Int) -> startdate::Date, enddate::Date
+
+Convert `startdate` and `enddate` from `Int` to `Date`.
+If the day and/or month in `startdate` are missing, `startdate` is completed with
+the earliest possible date (day = `01` and month = `01`).
+If the day and/or month in `enddate` are missing, `enddate` is completed with
+the latest possible date (month = `12` and day = last day of that month).
+"""
+function convertdates(startdate::Int, enddate::Int)
+  startdate = Date(string(startdate), "yyyymmdd")
+  enddate = string(enddate)
+  l = length(enddate)
+  enddate = if l == 8
+    Date(enddate, "yyyymmdd")
+  else
+    Dates.lastdayofmonth(Date(enddate*"12", "yyyymmdd"))
+  end
+
+  return startdate, enddate
+end #function convertdates!
