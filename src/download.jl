@@ -1,332 +1,356 @@
 # Routines related to downloading ICARE data and folder syncing with ICARE
 
+## Overload Base functions for SFTP file system
+Base.pwd(server::SFTP) = server.uri.path
+
+
+## Exported functions
 """
-    function ftp_download(
+    sftp_download(
       user::String,
       password::String,
       product::String,
       startdate::Int,
       enddate::Int=-1;
       version::Float64 = 4.20,
-      dir::String = ".",
-      savelog::String = "ICAREdownloads.log",
-      warnlog::String = "ICAREwarnings.log",
-      cleandata::Union{Nothing,Bool} = nothing,
-      download::Bool = true,
-      appendlog::Bool = false,
-      restart::String = "ask"
-    )
+      remoteroot::String = "/SPACEBORNE/CALIOP/",
+      localroot::String = ".",
+      logfile::String = "ICAREdownloads.log",
+      format::UInt8 = 0x02,
+      update::Bool = false,
+      remoteext::String = ".hdf"
+    )::Nothing
 
-Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
-and `version` (e.g., `3.01` or `4.2`, default is `4.20`) from the ICARE server
-using your `user` login name and `password`.
+Download satellite data from the Aeris/ICARE server.
 
-# Select date range
+# General usage
 
-Data is downloaded for the specified time frame in the range `startdate` to `enddate`;
-`startdate` and `enddate` are positiv integers in the date format `"yyyymmdd"`.
-Months (`"mm"`) or month and days (`"mmdd"`) can be missing and are substituted with the first
-possible date for the `startdate` and last possible date for the `enddate`.
-If `enddate` is not specified, it is assigned the same value as `startdate`, but can
-actually be a different date, when the day and/or month is not specified as the value
-is assigned prior to the conversion to dates.
+To use `sftp_download`, an Aeris/ICARE account is needed that is available for free at
+https://www.icare.univ-lille.fr. Download satellite data by giving the `user`name and `password`
+of that account as the first two arguments.
 
-## Examples
+By default, CALIOP data is downloaded. This can be changed by setting the `remoteroot`
+keyword argument as long as the contained folder structure is in the format
+`<product>.v<version>/yyyy/yyyy_mm_dd`. The root path can be found in the Aeris/ICARE database.
+Files are assumed to be hdf4 files with extension `.hdf`. This can be changed to hdf5 (`.h5` files)
+by passing the extension including the dot to the `remoteext` keyword argument.
 
-- startdate = `2010`: download all data available in 2006 (from 2010-01-01 to 2010-12-31)
-- startdate = `201001`: download all data from January 2010 (from 2010-01-01 to 2010-01-31)
-- startdate = `20100101`: download data only for 2010-01-01
-- startdate, enddate = `2010, 201006`: download first half of 2010 (from 2010-01-01 to 2010-06-30)
-- startdate, enddate = `20100103, 20100105`: download data from 2010-01-03 to 2010-01-05
+In addition to the root, the desired `product` is needed as third positional argument,
+e.g. `05kmCPro` or `01kmALay`. The name must match the name in the folder excluding
+the version number, which is passed as float in the keyword argument `version` (default = `4.20`).
 
+Finally, the desired date range can be specified with the fourth and optional fifth
+positional argument. Dates are passed as integer values in the format `yyyymmdd`.
+Days and months are optional. If only one Date is passed, all files for that date are
+downloaded, e.g. `20200101` will download all granules for the day January 1st, 2020.
+If the date is omitted (`202001`) the whole January 2020 is downloaded and if just the year
+is given, the whole year is downloaded. Date ranges can be specified by giving a start date
+as fourth and end date as fifth argument. If days or days and months are omitted in the
+start date, the are assumed to be the first of that period, if days and months are omitted
+in the end date, the are the last of that period. E.g., `202007, 2020` will download the
+second half of 2020 from 01.07.2020 to 31.12.2020, `20220415, 20230103` will download
+for the range 14.04.2022 to 03.01.2023 including the start and end date.
 
-# Data structure
+Finally, it is necesary to specify where and how the data should be stored locally.
+By default, data will be downloaded to the current folder (where julia was started from
+or in which the julia script/REPL command changed). This can be overwritten with the
+`localroot` keyword argument. Data is downloaded to the date folders within the product
+folder contained directly in `localroot`. Missing folders will be created automatically
+upon confirmation.
 
-Data are downloaded to the local directory `dir`, where `dir` is the main folder containing the data folder
-for `product` files. Folder structure within `dir` is synced with ICARE.
-Data is placed in the same folders as on the ICARE server; missing folders are created.
-If already existing folders contain any other files than hidden files or files
-also available on the ICARE server a warning is given with the option to delete those
-files. You are asked in the terminal for the following options:
+By default all data will be saved as `.h5` files in the HDF5 format regardless of the
+file format on the server. This behaviour can be influended with the `format` kwarg.
+Format options are given as `UInt8`. The following options are available:
+- HDF4: `0x01` or `0b01`
+- HDF5: `0x02` or `0b10`
+- both: `0x03` or `0b11`
 
-- `y`: current file is deleted
-- `n`: current file deletion is skipped
-- `all`: press at any time; __all files__ are deleted __even previously skipped files__
-- `remaining`: the current and __all remaining files__ in the list are deleted;
-  _previously skipped files are kept_
-- `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
-
-Alternatively, you can set the `cleandata` kwarg to `true`/`false` to delete all/no
-data file without programme interruption.
-
-**Files are not synced with ICARE, missing files are downloaded, but existing files
-are not checked for file changes.**
-
-
-# Logging and recovery
-
-Download is monitored in `ICAREdownloads.log`; warnings of missing ICARE data
-or additional local data files is given in `ICAREwarnings.log` (or the specified
-alternative paths/names for the `savelog` and `warnlog` files). By default, new
-log files are created for every run of `ftp_download`, but existing log files can
-be appended, if `appendlog` is set to `true`.
-
-If `download` is set to `false`, `ftp_download` only checks for available
-additional data files on the ICARE server in the specified timeframe and reports
-them in the `savelog` file. Furthermore, missing dates on ICARE or misplaced
-files in the local directories are given in the `warnlog` file. Directories are
-not synced with ICARE, and files are not downloaded. This option is available to
-check your data coverage compared to the ICARE server.
-
-If `ftp_download` is prematurely interrupted, you will be prompted to restart your
-old session at the next call of `ftp_download`. Alternatively, you can set the
-behaviour of `ftp_download` with the keyword argument `restart` and the following
-options for an uninterrupted run:
-
-- `"y"`: Continue previously interrupted run. Use the same `savelog` file to avoid
-  errors or problems.
-- `"n"`: Continue with current run and delete history of previously interrupted session.
-- `"l"`: Continue with current run, but save history of previously interrupted session.
+Only missing files will be downloaded. Already downloaded files will be skipped.
+If `update` is set to `true`, the modified dates of the local and remote files are
+compared and newer files will be downloaded from the server.
 """
-function ftp_download(
+function sftp_download(
   user::String,
   password::String,
   product::String,
   startdate::Int,
   enddate::Int=-1;
   version::Float64 = 4.20,
-  dir::String = ".",
-  savelog::String = "ICAREdownloads.log",
-  warnlog::String = "ICAREwarnings.log",
-  cleandata::Union{Nothing,Bool} = nothing,
-  download::Bool = true,
-  appendlog::Bool = false,
-  restart::String = "ask"
-)
-  # Convert date range to dates
-  enddate > 0 || (enddate = startdate)
-  startdate, enddate = convertdates(startdate, enddate)
-
-  # Save log files to dir unless a path is given
-  basename(savelog) == savelog && (savelog = joinpath(dir, savelog))
-  basename(warnlog) == savelog && (warnlog = joinpath(dir, warnlog))
-
-  # Check for possible continuation of previous downloads from donwload session log
-  prevsession = init_restart(savelog, restart, dir)
-  # Define read/write access to log files based on appendlog
-  rwa = appendlog || !isempty(prevsession) ? "a+" : "w+"
-
-  if isempty(prevsession) # new download session
-    # Scan for available files on ICARE server,
-    # sync folder structure and find missing files to download
-    remotefiles, localfiles, misplacedfiles = setup_download(user, password,
-      product, startdate, enddate, version, rwa, dir=dir, warnlog=warnlog,
-      download=download)
-    # Create restart file
-    CSV.write(splitext(savelog)[1]*".dsl",
-      DataFrame(remote = remotefiles, home = localfiles))
-    # Optionally delete misplaced files in local directories
-    rm_misplacedfiles(misplacedfiles, cleandata)
-  else # continue previous download session
-    remotefiles, localfiles = df.eachcol(prevsession)
-  end
-  if download
-    download_data(user, password, remotefiles, localfiles, savelog, rwa)
-  else
-    if isempty(remotefiles)
-      open(savelog, rwa) do f
-        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-        println(f, "No data available for download on ICARE\nin the specified timeframe.")
-
-        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-      end
+  remoteroot::String = "/SPACEBORNE/CALIOP/",
+  localroot::String = ".",
+  logfile::String = "ICAREdownloads.log",
+  format::UInt8 = 0x02,
+  update::Bool = false,
+  remoteext::String = ".hdf"
+)::Nothing
+  # Get connection to server
+  icare = __connect(user, password, product, version, remoteroot, remoteext)
+  # Create product folder, if not existent
+  productfolder = abspath(joinpath(localroot, icare.productfolder))
+  if !isdir(productfolder)
+    @warn "$productfolder does not exist"
+    print("Create? (y/n) ")
+    create = readline()
+    if startswith(lowercase(create), "y")
+      mkpath(productfolder)
     else
-      open(savelog, rwa) do f
-        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-        println(f, "Additional files available for download on ICARE:\n")
-        foreach(file -> println(f, file), remotefiles)
-        println(f, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-      end
+      throw(Base.IOError("path for local root and/or product folder does not exist; create path and restart ftp_download", 1))
     end
   end
-  rm(splitext(savelog)[1]*".dsl")
+  # Get folder structure from server
+  folders = folderstructure(icare, startdate, enddate)
+  # Set up log file in product dir unless a different folder is specified
+  contains("/", logfile) || (logfile = joinpath(productfolder, logfile))
+  # Save current path to return to at the end
+  cwd = pwd()
+  # Loop over folders, download missing data from server
+  for folder in folders, date in folder.dates
+    # Start from product folder
+    cd(productfolder)
+    # Match folder structure with server
+    setpath(icare, folder.year, date)
+    files = filenames(icare.server)
+    # Download files from ICARE server to local directory
+    __download(files, icare, format, update)
+  end
+  # Return to original directory
+  cd(cwd)
 end #function ftp_download
 
 
+## Functions for syncing with server and setting up local structure
+
 """
-    setup_download(
+    __connect(
       user::String,
       password::String,
       product::String,
-      startdate::Date,
-      enddate::Date,
-      version::Float64 = 4.20,
-      rwa::String = "w+";
-      dir::String = ".",
-      warnlog::String = "ICAREwarnings.log"
-    ) -> remotefiles, localfiles, misplacedfiles
+      version::Float64,
+      root::String,
+      extension::String
+    )::Connection
 
-Connect to ICARE server with `user` login name and `password` and scan for available
-files in the time frame `startdate` to `enddate` for the `version` of the given `product`.
-Sync the folder structure to the local `dir`ectory and warn of missing data folders
-on the ICARE server or misplaced files in already existing local folders in the
-`warnlog` file. Existing log files are overwritten unless read/write access of files
-(`rwa`) is set to `"a+"`.
+Securely connects to the server with SFTP using the credentials `user` and `password`
+and changing to the `product` folder of the specified `version` in the `root` directory
+assuming files with the given `extension`.
 
-Returns a `Vector{String}` with absolute folder path and file names for remote
-and local directory as well as for misplaced files in the local directories.
+Several checks are performed about the connection and folder structure and a
+`Connection` struct is returned with all relevant information about the server.
 """
-function setup_download(
+function __connect(
   user::String,
   password::String,
   product::String,
-  startdate::Date,
-  enddate::Date,
-  version::Float64 = 4.20,
-  rwa::String = "w+";
-  dir::String = ".",
-  warnlog::String = "ICAREwarnings.log",
-  download::Bool=true
-)
-  # Start file logger
-  logio = open(warnlog, rwa)
-  logger = logg.SimpleLogger(logio, logg.Debug)
-  # Connect to ICARE server
-  ftp.ftp_init()
-  icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
-    username = user, password = password)
-  # Define main folder for selected data type
-  caliopdir = "/SPACEBORNE/CALIOP/"
-  datadir = @sprintf "%s.v%.2f" product version
-  # Test connection and product name
-  try cd(icare, caliopdir)
-  catch
-    @error "bad connection to ICARE server"
+  version::Float64,
+  root::String,
+  extension::String
+)::Connection
+  # Connect to server and go to root of selected data
+  icare = SFTP("sftp://sftp.icare.univ-lille.fr", user, password)
+  try cd(icare, root)
+  catch err
+    rethrow(err)
   end
-  try cd(icare, joinpath(caliopdir, datadir))
-  catch
-    @error "incorrect product name or version number"
-  end
-  # Define dates in range
-  years = [string(y) for y = Dates.year(startdate):Dates.year(enddate)]
-  dates = [Dates.format(d, "yyyy_mm_dd") for d = startdate:Dates.Day(1):enddate]
-  missingdates = String[]
-  ## Sync data files
-  remotefiles = String[]; localfiles = String[]; misplacedfiles = String[]
-  prog = pm.Progress(length(dates), "setup...")
-  for year in years, date in dates
-    # Only look for dates with matching years
-    startswith(date, year) || continue
-    # Define current remote directory from date
-    remotedir = joinpath(caliopdir, datadir, year, date)
-    localdir = joinpath(dir, datadir, year, date)
-    try
-      # Get all data files in date range
-      cd(icare, remotedir)
-      remfiles = readdir(icare)
-      # Sync local folder structure with ftp server
-      if isdir(localdir)
-        # Find additional (misplaced) files in local directory
-        push!(misplacedfiles, joinpath.(localdir,
-          setdiff(readdir(localdir)[.!startswith.(readdir(localdir), ".")],
-          remfiles))...)
-        # Remember missing files in local directory for download
-        for file in remfiles
-          if !isfile(joinpath(localdir, file))
-            push!(remotefiles, joinpath(remotedir, file))
-            push!(localfiles, joinpath(localdir, file))
-          end
-        end
-      else
-        # Create missing folders from remote directory in local directory
-        download && mkpath(localdir)
-        push!(remotefiles, joinpath.(remotedir, remfiles)...)
-        push!(localfiles, joinpath.(localdir, remfiles)...)
-      end
-    catch err
-      if isdir(remotedir)
-        rethrow(err)
-      else
-        push!(missingdates, date)
-        isdir(localdir) && push!(misplacedfiles, localdir)
-      end
-    end
-    # Monitor progress for progress bar
-    pm.next!(prog)
-  end #loop over dates
-  # Clean-up
-  pm.finish!(prog)
-  # Close FTP connection to ICARE server
-  close(icare)
-  ftp.ftp_cleanup()
-  # Warn of misplaced files in log file
-  isempty(missingdates) && isempty(misplacedfiles) || sepline(logio, logger)
-  logg.with_logger(logger) do
-    if !isempty(missingdates)
-      println(logio, "No available data for the following dates:")
-      foreach(x -> println(logio, x), missingdates)
-    end
-    if !isempty(misplacedfiles)
-      println(logio,
-        "\nThe following misplaced files have been detected in local data folders:")
-      foreach(x -> println(logio, x), misplacedfiles)
-    end
-  end
-  isempty(missingdates) && isempty(misplacedfiles) || sepline(logio, logger)
-  close(logio)
 
-  return remotefiles, localfiles, misplacedfiles
+  # Go to product main folder
+  productfolder = @sprintf "%s.v%.2f" product version
+  try cd(icare, productfolder)
+  catch
+    throw(Base.IOError("incorrect product name or version number", 2))
+  end
+
+  Connection(icare, root, productfolder, extension)
+end
+
+
+"""
+    folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
+
+Analyse the folder structure on the `icare` server and return a vector of
+`DataStorage` structs holding the relevant folders for each year.
+"""
+function folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
+  # Convert integer dates to dates
+  enddate > 0 || (enddate = startdate)
+  startdate, enddate = convertdates(startdate, enddate)
+
+  # Define years and dates in range
+  folders = datafolders(startdate, enddate)
+
+  # Remove missing remote folders in local folders
+  for folder in folders
+    cd(icare.server, joinpath(icare.productpath, folder.year))
+    remotefolders = readdir(icare.server)
+    intersect!(folder.dates, remotefolders)
+  end #loop over dates
+
+  return folders
 end #function setup_download
 
 
 """
-    rm_misplacedfiles(misplacedfiles::Vector{String})
+    datafolders(start::Date, stop::Date)::Vector{DataStorage}
 
-Delete `misplacedfiles`. The routine loops over `misplacedfiles` and deletes them
-with the following confirmation options:
-
-- `y`: current file is deleted
-- `n`: current file deletion is skipped
-- `all`: press at any time; __all files__ are deleted __even previously skipped files__
-- `remaining`: the current and __all remaining files__ in the list are deleted;
-  _previously skipped files are kept_
-- `none`: __all remaining files__ are kept (previously deleted files are __not__ restored)
+Return a `Vector{DateStorage}` holding the years with the respective dates in the
+format `yyyy_mm_dd` between the `start` and `stop` date. Boths, years and dates are
+stored as `String`.
 """
-function rm_misplacedfiles(misplacedfiles::Vector{String}, cleandata::Union{Nothing,Bool})
-  # Skip if no misplaced files exist
-  length(misplacedfiles) > 0 || return
-  if cleandata == nothing
-    # Warn of missing files and manually delete files depending on user input choice
-    @warn "misplaced files in local data folders detected"
-    # Loop over files and ask for deletion options
-    for file in misplacedfiles
-      println("Delete $file?")
-      print("(y/n/remaining/all/none): ")
-      confirm = readline()
-      if startswith(lowercase(confirm), "y")
-        # Delete current file
-        rm(file, recursive=true)
-      elseif lowercase(confirm) == "all"
-        # Delete ALL files
-        rm.(misplacedfiles, recursive=true)
-        break
-      elseif lowercase(confirm) == "remaining"
-        # Delete REMAINING files
-        i = findfirst(misplacedfiles.==file)
-        rm.(misplacedfiles[i:end], recursive=true)
-        break
-      elseif lowercase(confirm) == "none"
-        # DON'T delete REMAINING files
-        break
+function datafolders(start::Date, stop::Date)::Vector{DataStorage}
+  # Define years in range
+  years = Dates.year(start):Dates.year(stop)
+  folders = DataStorage[]
+  # Loop over years and get dates for each year
+  for yr in years
+    push!(folders, DataStorage(max(start, Date(yr)), min(stop, Date(yr, 12, 31))))
+  end
+  # Return Vector of DataStorage structs
+  return folders
+end
+
+
+"""
+    setpath(connection::Connection, year::String, date::String)::Nothing
+
+Change to the current date folder on the server as well as locally.
+Create missing local folders.
+"""
+function setpath(connection::Connection, year::String, date::String)::Nothing
+  # Set local path (starting from product path), create if missing
+  datadir = mkpath(joinpath(year, date))
+  cd(datadir)
+  # Set path on server
+  cd(connection.server, joinpath(connection.productpath, datadir))
+end
+
+
+"""
+    filenames(dir::Union{String,SFTP}=".")::Vector{String}
+
+Return a vector of base names without the extension for the given `dir`ectory.
+"""
+filenames(dir::Union{String,SFTP}=".")::Vector{String} = getindex.(readdir(dir) .|> splitext,1)
+
+
+"""
+    convertdates(startdate::Int, enddate::Int) -> startdate::Date, enddate::Date
+
+Convert `startdate` and `enddate` from `Int` to `Date`.
+If the day and/or month in `startdate` are missing, `startdate` is completed with
+the earliest possible date (day = `01` and month = `01`).
+If the day and/or month in `enddate` are missing, `enddate` is completed with
+the latest possible date (month = `12` and day = last day of that month).
+"""
+function convertdates(startdate::Int, enddate::Int)::Tuple{Date,Date}
+  startdate = Date(string(startdate), "yyyymmdd")
+  enddate = string(enddate)
+  l = length(enddate)
+  enddate = if l == 8
+    Date(enddate, "yyyymmdd")
+  else
+    Dates.lastdayofmonth(Date(enddate*"12", "yyyymmdd"))
+  end
+
+  return startdate, enddate
+end #function convertdates!
+
+
+## Function for sftp download
+
+"""
+    __download(
+      files::Vector{String},
+      icare::Connection,
+      format::UInt8,
+      update::Bool
+    )::Nothing
+
+Download the `files` from the `icare` server and save in the specified `format`.
+If set, `update` files to the latest version available on the server.
+"""
+function __download(
+  files::Vector{String},
+  icare::Connection,
+  format::UInt8,
+  update::Bool
+)::Nothing
+  for file in files
+    for i = 1:5
+      # Set flag for presence of hdf file
+      h4 = isfile(file)
+      # Check download status (no directory needed, already in product directory)
+      downloaded(file, icare, format, update) && break
+      # Download data, if not in local path
+      sftp.download(icare.server, file*icare.extension, downloadDir=".")
+      # download_data(icare)
+      # Convert to h5, if option is set
+      ext = bits(format)
+      if ext[2]
+        # Make previous h5 versions are overwritten
+        rm("$file.h5", force=true)
+        # Convert hdf4 to hdf5
+        run(`h4toh5 $file.hdf`)
+      end
+      # Delete hdf, if option is set and file was not already present
+      (ext[1] && h4) || rm(file*".hdf")
+      # Abort download attempts after fifth try
+      if !downloaded(file, icare, format, update)
+        throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
       end
     end
-  elseif cleandata
-    # Delete all data, if cleandata flag is set
-    rm.(misplacedfiles, recursive=true)
   end
-end #function rm_misplacedfiles
+  return
+end
 
 
+"""
+    downloaded(
+      targetfile::String,
+      icare::Connection,
+      format::UInt8,
+      update::Bool;
+      dir::String="."
+    )::Bool
+
+Check, whether the `targetfile` has already been downloaded from the `icare` server
+to the local `dir`ectory in the specified `format`. If desired, `update` if newer
+file versions are available.
+"""
+function downloaded(
+  targetfile::String,
+  icare::Connection,
+  format::UInt8,
+  update::Bool;
+  dir::String="."
+)::Bool
+  # Get files in local director and verify HDF version
+  localfiles = filenames(dir)
+  hdf_version = bits(format)
+  # Return false, if file doesn't exist
+  targetfile ∈ localfiles || return false
+  # Get stats on remote files
+  remotestats = sftp.sftpstat(icare.server)
+  i = findfirst(isequal(targetfile*icare.extension), [f.desc for f in remotestats])
+  remotestats = remotestats[i]
+  # Check hdf4 files for size and modified date
+  if hdf_version[1]
+    hdf = ".hdf"
+    isfile(targetfile*hdf) || return false
+    localstats = stat(targetfile*hdf)
+    localstats.size == remotestats.size || return false
+    (update && localstats.mtime > remotestats.mtime) && return false
+  end
+  # Check hdf5 files for size and modified date
+  if hdf_version[2]
+    hdf = ".h5"
+    isfile(targetfile*hdf) || return false
+    localstats = stat(targetfile*hdf)
+    (update && localstats.mtime > remotestats.mtime) && return false
+  end
+  # Return true if all checks have been passed
+  return true
+end
+
+#=
 """
     download_data(
       user::String,
@@ -355,16 +379,14 @@ function download_data(
   logger = logg.SimpleLogger(logio, logg.Debug)
   sepline(logio, logger)
   # Connect to ICARE server
-  ftp.ftp_init()
-  icare = ftp.FTP(hostname = "ftp.icare.univ-lille1.fr",
-    username = user, password = password)
+  icare = sftp.SFTP("sftp://sftp.icare.univ-lille.fr", user, password)
   # Error on different remote and local file definitions
   length(remotefiles) ≠ length(localfiles) &&
     @error "Different number of local and remote files defined"
   # Loop over remotefiles and download to local machine as localfiles
   tstart = Dates.now()
   @pm.showprogress 5 "download..." for (rem, loc) in zip(remotefiles, localfiles)
-    download(icare, rem, loc)
+    sftp.download(icare, rem, downloadDir=loc)
     # Log download process
     logg.with_logger(logger) do
       println(logio, basename(rem))
@@ -387,6 +409,8 @@ function download_data(
 end #function download_data
 
 
+## Functions for logging
+
 """
     sepline(logio::IOStream, logger::logg.SimpleLogger)
 
@@ -395,27 +419,4 @@ Print a separator line to the stream `logio` using the `logger`.
 sepline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
   println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
 end
-
-
-
-"""
-    convertdates(startdate::Int, enddate::Int) -> startdate::Date, enddate::Date
-
-Convert `startdate` and `enddate` from `Int` to `Date`.
-If the day and/or month in `startdate` are missing, `startdate` is completed with
-the earliest possible date (day = `01` and month = `01`).
-If the day and/or month in `enddate` are missing, `enddate` is completed with
-the latest possible date (month = `12` and day = last day of that month).
-"""
-function convertdates(startdate::Int, enddate::Int)
-  startdate = Date(string(startdate), "yyyymmdd")
-  enddate = string(enddate)
-  l = length(enddate)
-  enddate = if l == 8
-    Date(enddate, "yyyymmdd")
-  else
-    Dates.lastdayofmonth(Date(enddate*"12", "yyyymmdd"))
-  end
-
-  return startdate, enddate
-end #function convertdates!
+=#
