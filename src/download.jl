@@ -1,4 +1,4 @@
-# Routines related to downloading ICARE data and folder syncing with ICARE
+## Routines related to downloading ICARE data and folder syncing with ICARE
 
 ## Overload Base functions for SFTP file system
 
@@ -103,39 +103,40 @@ function sftp_download(
   version::Float64 = 4.20,
   remoteroot::String = "/SPACEBORNE/CALIOP/",
   localroot::String = ".",
-  logfile::String = "ICAREdownloads.log",
   format::UInt8 = 0x02,
   update::Bool = false,
   remoteext::String = ".hdf"
 )::Nothing
   # Save current path to return to at the end
   cwd = pwd()
-  # Get connection to server
-  icare = __connect(user, password, product, version, remoteroot, remoteext)
-  # Create product folder, if not existent
-  productfolder = set_localroot(localroot, icare.productfolder)
-  # Get folder structure from server
-  folders = folderstructure(icare, startdate, enddate)
-  # Set up log file in product dir unless a different folder is specified
-  contains("/", logfile) || (logfile = joinpath(productfolder, logfile))
-  # Loop over folders, download missing data from server
-  for folder in folders, date in folder.dates
-    # Match folder structure with server
-    datadir = mkpath(joinpath(folder.year, date))
-    # setpath(icare, folder.year, date)
-    files = filenames!(icare, datadir)
-    # Download files from ICARE server to local directory
-    __download(icare, files, datadir, format, update)
+  try
+    # Get connection to server
+    icare = connect(user, password, product, version, remoteroot, remoteext)
+    # Create product folder, if not existent
+    productfolder = set_localroot(localroot, icare.productfolder)
+    # Get folder structure from server
+    folders = folderstructure(icare, startdate, enddate)
+    # Loop over folders, download missing data from server
+    for folder in folders, date in folder.dates
+      # Match folder structure with server
+      datadir = mkpath(joinpath(folder.year, date))
+      files = filenames!(icare, datadir)
+      # Download files from ICARE server to local directory
+      download(icare, files, datadir, format, update)
+    end
+  catch error
+    rethrow(error)
+  finally
+    # Return to original directory
+    cd(cwd)
   end
-  # Return to original directory
-  cd(cwd)
 end #function ftp_download
 
 
 ## Functions for syncing with server and setting up local structure
 
 """
-    __connect(
+    connect(
       user::String,
       password::String,
       product::String,
@@ -151,7 +152,7 @@ assuming files with the given `extension`.
 Several checks are performed about the connection and folder structure and a
 `Connection` struct is returned with all relevant information about the server.
 """
-function __connect(
+function connect(
   user::String,
   password::String,
   product::String,
@@ -254,21 +255,6 @@ end
 
 
 """
-    setpath(connection::Connection, year::String, date::String)::Nothing
-
-Change to the current date folder on the server as well as locally.
-Create missing local folders.
-"""
-function setpath(connection::Connection, year::String, date::String)::Nothing
-  # Set local path (starting from product path), create if missing
-  datadir = mkpath(joinpath(year, date))
-  cd(datadir)
-  # Set path on server
-  cd(connection.server, joinpath(connection.productpath, datadir))
-end
-
-
-"""
     filenames!(icare::Connection, dir::String)::Vector{String}
 
 Return a vector of base names without the extension for the given `dir`ectory
@@ -315,7 +301,7 @@ end #function convertdates!
 ## Function for sftp download
 
 """
-    __download(
+    download(
       icare::Connection,
       files::Vector{String},
       datadir::String,
@@ -327,39 +313,17 @@ Download the `files` from the `icare` server and save in the specified `format`
 to the given `datadir`. If set, `update` files to the latest version available
 on the server.
 """
-function __download(
+function download(
   icare::Connection,
   files::Vector{String},
   datadir::String,
   format::UInt8,
   update::Bool
 )::Nothing
-  prog = pm.Progress(length(files), dt = 1, desc="downloading...")
+  prog = pm.Progress(length(files), dt=1, desc="downloading...")
   for file in files
-    for i = 1:5
-      # Set flag for presence of hdf file
-      h4 = isfile(file)
-      # Check download status (no directory needed, already in product directory)
-      downloaded(icare, file, datadir, format, update) && break
-      # Download data, if not in local path
-      sftp.download(icare.server, file*icare.extension, downloadDir=datadir)
-      # download_data(icare)
-      # Convert to h5, if option is set
-      ext = bits(format)
-      if ext[2]
-        # Make sure, previous h5 versions are overwritten
-        rm("$(joinpath(datadir, file)).h5", force=true)
-        # Convert hdf4 to hdf5
-        run(`h4toh5 $(joinpath(datadir, file)).hdf`)
-      end
-      # Delete hdf, if option is set and file was not already present
-      (ext[1] && h4) || rm(joinpath(datadir, file)*".hdf")
-      # Abort download attempts after fifth try
-      if !downloaded(icare, file, datadir, format, update)
-        throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
-      end
-    end
-    pm.next!(prog, showvalues = [(:date,Dates.Date(basename(datadir), "y_m_d"))])
+      download_data(icare, file, datadir, format, update)
+      pm.next!(prog, showvalues = [(:date,Dates.Date(basename(datadir), "y_m_d"))])
   end
   pm.finish!(prog)
   return
@@ -399,7 +363,7 @@ function downloaded(
   if hdf_version[1]
     hdf = ".hdf"
     isfile(joinpath(dir, targetfile*hdf)) || return false
-    localstats = stat(targetfile*hdf)
+    localstats = stat(joinpath(dir, targetfile*hdf))
     localstats.size == remotestats.size || return false
     (update && localstats.mtime > remotestats.mtime) && return false
   end
@@ -414,7 +378,7 @@ function downloaded(
   return true
 end
 
-#=
+
 """
     download_data(
       user::String,
@@ -431,56 +395,34 @@ Old log files are overwritten unless read/write access to files (`rwa`) is set t
 `"a+"`.
 """
 function download_data(
-  user::String,
-  password::String,
-  remotefiles::Vector{String},
-  localfiles::Vector{String},
-  savelog::String = "ICAREdownloads.log",
-  rwa::String = "w+"
-)
-  # Start file logger
-  logio = open(savelog, rwa)
-  logger = logg.SimpleLogger(logio, logg.Debug)
-  sepline(logio, logger)
-  # Connect to ICARE server
-  icare = sftp.SFTP("sftp://sftp.icare.univ-lille.fr", user, password)
-  # Error on different remote and local file definitions
-  length(remotefiles) ≠ length(localfiles) &&
-    @error "Different number of local and remote files defined"
-  # Loop over remotefiles and download to local machine as localfiles
-  tstart = Dates.now()
-  @pm.showprogress 5 "download..." for (rem, loc) in zip(remotefiles, localfiles)
-    sftp.download(icare, rem, downloadDir=loc)
-    # Log download process
-    logg.with_logger(logger) do
-      println(logio, basename(rem))
-      println(logio, "-> download completed at $(Dates.now())")
+  icare::Connection,
+  file::String,
+  datadir::String,
+  format::UInt8,
+  update::Bool
+)::Nothing
+  for i = 1:5
+    # Set flag for presence of hdf file
+    h4 = isfile(file)
+    # Check download status (no directory needed, already in product directory)
+    downloaded(icare, file, datadir, format, update) && break
+    # Download data
+    sftp.download(icare.server, file*icare.extension, downloadDir=datadir)
+    # Convert to h5, if option is set
+    ext = bits(format)
+    if ext[2]
+      # Make sure, previous h5 versions are overwritten
+      rm("$(joinpath(datadir, file)).h5", force=true)
+      # Convert hdf4 to hdf5
+      run(`h4toh5 $(joinpath(datadir, file)).hdf`)
     end
-    flush(logio)
+    # Delete hdf, if option is set and file was not already present
+    if !ext[1] && !h4
+      rm(joinpath(datadir, file)*".hdf")
+    end
+    # Abort download attempts after fifth try
+    if !downloaded(icare, file, datadir, format, update)
+      throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
+    end
   end
-  # Log download time
-  tend = Dates.now()
-  logg.with_logger(logger) do
-    tdiff = Dates.canonicalize(Dates.CompoundPeriod(tend - tstart))
-    isempty(remotefiles) ? println(logio, "no download performed") : println(logio,
-      "\ndownload took $(join(tdiff.periods[1:min(2,length(tdiff.periods))], ", "))")
-  end
-  # Clean-up
-  close(icare)
-  ftp.ftp_cleanup()
-  sepline(logio, logger)
-  close(logio)
 end #function download_data
-
-
-## Functions for logging
-
-"""
-    sepline(logio::IOStream, logger::logg.SimpleLogger)
-
-Print a separator line to the stream `logio` using the `logger`.
-"""
-sepline(logio::IOStream, logger::logg.SimpleLogger) = logg.with_logger(logger) do
-  println(logio, "––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––")
-end
-=#

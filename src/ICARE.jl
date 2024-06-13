@@ -12,15 +12,14 @@ import SFTPClient as sftp
 import SFTPClient: SFTP
 import Bits: bits
 import ProgressMeter as pm
-import Logging as logg
 import Dates
 import Dates: Date
 import Printf: @sprintf
+import Logging
 
 # Export functions
-export sftp_download
+export sftp_download, hdfupgrade
 
-# TODO routine to only convert h4 to h5
 # TODO routine to clean up h4 and/or h5 files
 # TODO routine to clean up additional files
 # * different levels of severity:
@@ -28,11 +27,7 @@ export sftp_download
 # - everything that is not matched with files on server
 # - every hdf(4) that has not the same file size as on server
 # - everything that is older than files on server
-
-  # TODO logging
-  # TODO progress bar
-  # pb use 4-5 threads for downloads
-  # ¡check if error aborts every thread with parallel code!
+# TODO logging
 
 
 """
@@ -138,5 +133,6 @@ end
 
 # Include source files
 include("download.jl") # routines related to syncing with ICARE
+include("conversion.jl") # routines related to hdf4 > hdf5 conversion
 
 end #module ICARE
