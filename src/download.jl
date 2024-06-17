@@ -5,7 +5,7 @@
 """
     pwd(server::SFTP)::String
 
-Return the absolute path of the present working directory as string.
+Return the absolute path of the present working directory on the `server` as string.
 """
 Base.pwd(server::SFTP)::String = string(server.uri.path)
 
@@ -29,7 +29,7 @@ function Base.readdir(server::SFTP, dir::String; join::Bool=false, change::Bool=
 end
 
 
-## Exported functions
+## API functions
 """
     sftp_download(
       user::String,
@@ -107,28 +107,22 @@ function sftp_download(
   update::Bool = false,
   remoteext::String = ".hdf"
 )::Nothing
-  # Save current path to return to at the end
-  cwd = pwd()
-  try
-    # Get connection to server
-    icare = connect(user, password, product, version, remoteroot, remoteext)
-    # Create product folder, if not existent
-    productfolder = set_localroot(localroot, icare.productfolder)
-    # Get folder structure from server
-    folders = folderstructure(icare, startdate, enddate)
-    # Loop over folders, download missing data from server
-    for folder in folders, date in folder.dates
-      # Match folder structure with server
-      datadir = mkpath(joinpath(folder.year, date))
-      files = filenames!(icare, datadir)
-      # Download files from ICARE server to local directory
-      download(icare, files, datadir, format, update)
-    end
-  catch error
-    rethrow(error)
-  finally
-    # Return to original directory
-    cd(cwd)
+  # Get connection to server, go to product folder on remote
+  icare = connect(user, password, product, version, remoteroot, remoteext)
+  # Create product folder, if not existent
+  productfolder = set_localroot(localroot, icare.productfolder)
+  # Read server data, if available
+  inventory = product_database(icare, productfolder)
+  # Get folder structure from server
+  folders = folderstructure(icare, startdate, enddate)
+  # Loop over folders, download missing data from server
+  for folder in folders, date in folder.dates
+    # Match folder structure with server
+    datadir = (; :abs=>joinpath(productfolder, folder.year, date), :rel=>joinpath(folder.year, date))
+    mkpath(datadir.abs)
+    date = remotefiles!(icare, inventory, datadir.rel, productfolder)
+    # Download files from ICARE server to local directory
+    download(icare, inventory, datadir, date, format, update)
   end
 end #function ftp_download
 
@@ -145,7 +139,7 @@ end #function ftp_download
       extension::String
     )::Connection
 
-Securely connects to the server with SFTP using the credentials `user` and `password`
+Securely connect to the server with SFTP using the credentials `user` and `password`
 and changing to the `product` folder of the specified `version` in the `root` directory
 assuming files with the given `extension`.
 
@@ -173,16 +167,17 @@ function connect(
   catch
     throw(Base.IOError("incorrect product name or version number", 2))
   end
-
+  # Instantiate and return Connection
   Connection(icare, root, productfolder, extension)
 end
 
 
 """
-    folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{String}
+    folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
 
 Analyse the folder structure on the `icare` server and return a vector of
-`DataStorage` structs holding the relevant folders for each year.
+`DataStorage` structs holding the relevant folders for each year between the
+`startdate` and the `enddate`.
 """
  function folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
   # Convert integer dates to dates
@@ -204,6 +199,8 @@ Analyse the folder structure on the `icare` server and return a vector of
     # Set year without dates empty
     isempty(folder.dates) && push!(missing_years, i)
   end #loop over dates
+  # Clean-up
+  cd(icare.server, icare.productpath)
   deleteat!(folders, missing_years)
 
   return folders
@@ -229,8 +226,32 @@ function set_localroot(localroot::String, mainfolder::String)::String
     end
   end
   # Change to productfolder and return absolute path as String
-  cd(productfolder)
   return productfolder
+end
+
+
+"""
+    product_database(icare::Connection, productfolder::String)::SortedDict
+
+Return the inventory of `icare` server-side data files.
+Either read the database from the yaml file in the `productfolder` or initialise
+a new and empty database.
+"""
+function product_database(icare::Connection, productfolder::String)::SortedDict
+  database = joinpath(productfolder, "inventory.yaml")
+  return isfile(database) ?
+    YAML.load_file(database, dicttype=SortedDict{Any,Any}) :
+    SortedDict{Int,Any}(0 => SortedDict(
+      "file" => SortedDict(
+        "extension" => icare.extension,
+        "count" => 0
+      ),
+      "server" => SortedDict(
+        "updated" => nothing,
+        "product" => icare.productfolder,
+        "root" => icare.root
+      )
+    ))
 end
 
 
@@ -255,23 +276,74 @@ end
 
 
 """
-    filenames!(icare::Connection, dir::String)::Vector{String}
-
-Return a vector of base names without the extension for the given `dir`ectory
-starting from the product folder on the `icare` connection and change to the given `dir`.
-"""
-function filenames!(icare::Connection, dir::String)::Vector{String}
-  getindex.(readdir(icare.server, joinpath(icare.productpath, dir), change=true) .|> splitext,1)
-end
-
-
-"""
     filenames(dir::String=".")
 
 Return a vector of base names without the extension for the given `dir`ectory.
 """
 function filenames(dir::String=".")
   getindex.(readdir(dir) .|> splitext,1)
+end
+
+
+"""
+    remotefiles!(
+      icare::Connection,
+      inventory::SortedDict,
+      datadir::String,
+      productdir::String
+    )::@NamedTuple{year::Int,month::Int,day::Int}
+
+Check, if the files on the `icare` server in the `datadir` path are already in the inventory,
+otherwise update the inventory (including the metadata). Save the updated inventory as
+yaml file to the `productfolder` and return the year `y`, month `m`, and day `d` as
+`NamedTuple` to easily address the current data in the inventory.
+"""
+function remotefiles!(
+  icare::Connection,
+  inventory::SortedDict,
+  datadir::String,
+  productdir::String
+)::@NamedTuple{year::Int,month::Int,day::Int}
+  y, m, d = parse.(Int, split(basename(datadir), "_"))
+  if hasentry!(inventory, y, m, d)
+    inventory[y][m][d]
+  else
+    # Get stats of remote files
+    files = sftp.sftpstat(icare.server, joinpath(icare.productpath, datadir))
+    # Remove current and perant directory from stats
+    deleteat!(files, 1:2)
+    # Save file stats to new inventory entry
+    for file in files
+      inventory[y][m][d][splitext(file.desc)[1]] = SortedDict(
+        "mtime" => Dates.unix2datetime(file.mtime),
+        "size" => file.size
+      )
+    end
+    # Update inventory metadata
+    inventory[0]["file"]["count"] += length(files)
+    inventory[0]["server"]["updated"] = Dates.now()
+    @show length(files)
+    YAML.write_file(joinpath(productdir, "inventory.yaml"), inventory)
+  end
+  return (; :year=>y, :month=>m, :day=>d)
+end
+
+
+"""
+    hasentry!(inventory::SortedDict, y::Int, m::Int, d::Int)::Bool
+
+Check whether the date (year `y`, month `m`, and day `d`) is in the current `inventory`
+and return as `Bool`.
+"""
+function hasentry!(inventory::SortedDict, y::Int, m::Int, d::Int)::Bool
+  haskey(inventory, y) || (inventory[y] = SortedDict())
+  haskey(inventory[y], m) || (inventory[y][m] = SortedDict())
+  if haskey(inventory[y][m], d)
+    true
+  else
+    inventory[y][m][d] = SortedDict()
+    false
+  end
 end
 
 
@@ -315,38 +387,93 @@ on the server.
 """
 function download(
   icare::Connection,
-  files::Vector{String},
-  datadir::String,
+  inventory::SortedDict,
+  datadir::@NamedTuple{abs::String,rel::String},
+  date::@NamedTuple{year::Int,month::Int,day::Int},
   format::UInt8,
   update::Bool
 )::Nothing
-  prog = pm.Progress(length(files), dt=1, desc="downloading...")
-  for file in files
-      download_data(icare, file, datadir, format, update)
-      pm.next!(prog, showvalues = [(:date,Dates.Date(basename(datadir), "y_m_d"))])
+  # TODO use several threds for parallel downloads
+  files = inventory[date.year][date.month][date.day]
+  pm.@showprogress 1 "$(Dates.format(Dates.Date(basename(datadir.rel), "y_m_d"), "yyyy-mm-dd")):" for (file, data) in files
+    download_data(icare, file, datadir, data, format, update)
   end
-  pm.finish!(prog)
   return
 end
 
 
 """
-    downloaded(
+    download_data(
       icare::Connection,
+      file::String,
+      datadir::@NamedTuple{abs::String,rel::String},
+      filestats::SortedDict,
+      format::UInt8,
+      update::Bool
+    )::Nothing
+
+Check whether the current `file` has already been downloaded by comparing it to the
+`icare` `filestats`, otherwise download it from the `datadir` on the `icare` server
+to the local `datadir` in the specified format:
+- HDF4: `0x01` or `0b01`
+- HDF5: `0x02` or `0b10`
+- both: `0x03` or `0b11`
+Newer versions of existing local files are only downloaded from the `icare` server,
+if `update` is set to `true`.
+"""
+function download_data(
+  icare::Connection,
+  file::String,
+  datadir::@NamedTuple{abs::String,rel::String},
+  filestats::SortedDict,
+  format::UInt8,
+  update::Bool
+)::Nothing
+  for i = 1:5
+    # Set flag for presence of hdf file
+    h4 = isfile(file)
+    # Check download status (no directory needed, already in product directory)
+    downloaded(file, datadir.abs, filestats, format, update) && break
+    # Download data
+    cd(icare.server, joinpath(icare.productpath, datadir.rel))
+    sftp.download(icare.server, file*icare.extension, downloadDir=datadir.abs)
+    # Convert to h5, if option is set
+    ext = bits(format)
+    if ext[2]
+      # Make sure, previous h5 versions are overwritten
+      rm("$(joinpath(datadir.abs, file)).h5", force=true)
+      # Convert hdf4 to hdf5
+      run(`h4toh5 $(joinpath(datadir.abs, file)).hdf`)
+    end
+    # Delete hdf, if option is set and file was not already present
+    if !ext[1] && !h4
+      rm(joinpath(datadir.abs, file)*".hdf")
+    end
+    # Abort download attempts after fifth try
+    if !downloaded(file, datadir.abs, filestats, format, update)
+      throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
+    end
+  end
+end #function download_data
+
+
+"""
+    downloaded(
       targetfile::String,
       dir::String,
+      filestats::SortedDict,
       format::UInt8,
       update::Bool
     )::Bool
 
-Check, whether the `targetfile` has already been downloaded from the `icare` server
-to the local `dir`ectory in the specified `format`. If desired, `update` if newer
-file versions are available.
+Check, whether the `targetfile` has already been downloaded from the server
+to the local `dir`ectory in the specified `format` by compoaring it to the `filestats`
+of the remote server. If desired, `update` if newer file versions are available.
 """
 function downloaded(
-  icare::Connection,
   targetfile::String,
   dir::String,
+  filestats::SortedDict,
   format::UInt8,
   update::Bool
 )::Bool
@@ -355,74 +482,21 @@ function downloaded(
   hdf_version = bits(format)
   # Return false, if file doesn't exist
   targetfile ∈ localfiles || return false
-  # Get stats on remote files
-  remotestats = sftp.sftpstat(icare.server)
-  i = findfirst(isequal(targetfile*icare.extension), [f.desc for f in remotestats])
-  remotestats = remotestats[i]
   # Check hdf4 files for size and modified date
   if hdf_version[1]
-    hdf = ".hdf"
+    hdf = ".hdf" #¿use variable for extension?
     isfile(joinpath(dir, targetfile*hdf)) || return false
     localstats = stat(joinpath(dir, targetfile*hdf))
-    localstats.size == remotestats.size || return false
-    (update && localstats.mtime > remotestats.mtime) && return false
+    localstats.size == filestats["size"] || return false
+    (update && localstats.mtime > filestats["mtime"]) && return false
   end
   # Check hdf5 files for size and modified date
   if hdf_version[2]
-    hdf = ".h5"
+    hdf = ".h5" #¿use variable for extension?
     isfile(joinpath(dir, targetfile*hdf)) || return false
-    localstats = stat(targetfile*hdf)
-    (update && localstats.mtime > remotestats.mtime) && return false
+    localstats = stat(joinpath(dir, targetfile*hdf))
+    (update && localstats["mtime"] > filestats["mtime"]) && return false
   end
-  # Return true if all checks have been passed
+  # Return true if all checks passed
   return true
 end
-
-
-"""
-    download_data(
-      user::String,
-      password::String,
-      remotefiles::Vector{String},
-      localfiles::Vector{String},
-      savelog::String = "ICAREdownloads.log",
-      rwa::String = "w+"
-    )
-
-Connect to ICARE server with `user` login name and `password` and download
-`remotefiles` to local directory as `localfiles`. Monitor progress in `savelog`.
-Old log files are overwritten unless read/write access to files (`rwa`) is set to
-`"a+"`.
-"""
-function download_data(
-  icare::Connection,
-  file::String,
-  datadir::String,
-  format::UInt8,
-  update::Bool
-)::Nothing
-  for i = 1:5
-    # Set flag for presence of hdf file
-    h4 = isfile(file)
-    # Check download status (no directory needed, already in product directory)
-    downloaded(icare, file, datadir, format, update) && break
-    # Download data
-    sftp.download(icare.server, file*icare.extension, downloadDir=datadir)
-    # Convert to h5, if option is set
-    ext = bits(format)
-    if ext[2]
-      # Make sure, previous h5 versions are overwritten
-      rm("$(joinpath(datadir, file)).h5", force=true)
-      # Convert hdf4 to hdf5
-      run(`h4toh5 $(joinpath(datadir, file)).hdf`)
-    end
-    # Delete hdf, if option is set and file was not already present
-    if !ext[1] && !h4
-      rm(joinpath(datadir, file)*".hdf")
-    end
-    # Abort download attempts after fifth try
-    if !downloaded(icare, file, datadir, format, update)
-      throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
-    end
-  end
-end #function download_data

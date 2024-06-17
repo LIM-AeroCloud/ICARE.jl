@@ -15,18 +15,23 @@ import ProgressMeter as pm
 import Dates
 import Dates: Date
 import Printf: @sprintf
+import YAML
 import Logging
+import DataStructures as data
+import DataStructures: SortedDict
 
 # Export functions
-export sftp_download, hdfupgrade
+export sftp_download, hdfupgrade, pwd, readdir
 
+# ¡ TODO multi-threading
 # TODO routine to clean up h4 and/or h5 files
-# TODO routine to clean up additional files
+# TODO routine to clean up additional files (same with flags or different from above)
 # * different levels of severity:
 # - everything but hdf files
 # - everything that is not matched with files on server
-# - every hdf(4) that has not the same file size as on server
+# - every hdf(4) that has not the same file size as on server (if hdf4)
 # - everything that is older than files on server
+# solution ✅ to long comparisons with server: inventory.yaml in each product folder
 # TODO logging
 
 
@@ -57,7 +62,6 @@ function __init__()
     chmod(exec, 0o777)
     @info "created '~/tools/h4toh5' for hdf4 to hdf5 conversion"
     @info "'~/tools/' added to \$PATH for current julia session"
-    println(Base.stat(exec))
   end
 end
 
@@ -128,8 +132,6 @@ struct Connection
     new(server, root, productfolder, joinpath(root, productfolder), extension)
   end
 end
-
-
 
 # Include source files
 include("download.jl") # routines related to syncing with ICARE
