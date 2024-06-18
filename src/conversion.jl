@@ -29,9 +29,10 @@ THe original HDF4 files are kept, unless `clean` is set to `true` and the deleti
 is confirmed at the beginning of the function call.
 
 By default, the `logfile` is created as `rootdir/hdfupgrades_<timestamp>.log`.
-You can change the `logfile` name (including a different directory). The timestamp
-will be added automatically on creation. The number of log entries can be changed
-by setting the severity level to:
+You can change the `logfile` name (including a different directory). If no path is
+given in the logfile, it will be saved to `rootdir`. The timestamp will be added a
+utomatically on creation. The number of log entries can be changed by setting the
+severity level to:
 
 - `:Error`: Only errors (and severe warnings) are shown.
 - `:Warn`: Warnings and errors are shown.
@@ -51,7 +52,7 @@ function hdfupgrade(
   loglevel::Symbol=:Debug
 )::Nothing
   # Setup logging
-  logfile, level = init_logging(logfile, loglevel)
+  logfile, level = init_logging(logfile, rootdir, loglevel)
   open(logfile,"w") do logio
     logger = Logging.ConsoleLogger(logio, level, show_limited=false)
     # Security check
@@ -82,11 +83,12 @@ end
 
 
 """
-    init_logging(logfile::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
+    init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
 
-Add a timestamp to the `logfile` and return the `loglevel` as `Logging.LogLevel`.
+Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
+`rootdir`. Return the updated logfile and the `loglevel` as `Logging.LogLevel`.
 """
-function init_logging(logfile::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
+function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
   # Set log level
   loglevels = Dict(
     :Debug => Logging.Debug,
@@ -96,6 +98,7 @@ function init_logging(logfile::String, loglevel::Symbol)::Tuple{String,Logging.L
   )
   level = loglevels[loglevel]
   # Define log file with timestamp
+  contains(logfile, "/") || contains(logfile, "\\") || (logfile = joinpath(rootdir, logfile))
   logfile, logext = splitext(logfile)
   logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
   return logfile, level
@@ -255,8 +258,8 @@ function convert_hdffiles(
     run(`h4toh5 $(h4files[i]) $(h5files[i])`)
     Logging.with_logger(logger) do
       @debug "$(basename(h4files[i])) > $(basename(h5files[i]))" _module=nothing _file=nothing _line=nothing
-      flush(logio)
     end
+    flush(logio)
   end
 end
 

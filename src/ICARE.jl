@@ -23,7 +23,8 @@ import DataStructures: SortedDict
 # Export functions
 export sftp_download, hdfupgrade, pwd, readdir
 
-# ¡ TODO multi-threading
+# ¡ TODO multi-threading !
+
 # TODO routine to clean up h4 and/or h5 files
 # TODO routine to clean up additional files (same with flags or different from above)
 # * different levels of severity:
@@ -31,8 +32,9 @@ export sftp_download, hdfupgrade, pwd, readdir
 # - everything that is not matched with files on server
 # - every hdf(4) that has not the same file size as on server (if hdf4)
 # - everything that is older than files on server
-# solution ✅ to long comparisons with server: inventory.yaml in each product folder
-# TODO logging
+
+# TODO Functions that only scan server without downloading: scan(user, password, product, startdate,
+# TODO   stopdate, version=4.2, remoteroot="...", remoteext=".hdf", logfile="scans.log", loglevel=:Debug)
 
 
 """

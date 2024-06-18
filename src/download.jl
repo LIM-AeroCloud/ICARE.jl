@@ -1,6 +1,22 @@
 ## Routines related to downloading ICARE data and folder syncing with ICARE
 
-## Overload Base functions for SFTP file system
+## Types
+
+"""
+
+
+
+"""
+mutable struct Counter
+  downloads::Int
+  skipped::Int
+  function Counter(downloads::Int=0, skipped::Int=0)
+    new(downloads,skipped)
+  end
+end
+
+## API functions
+#* Overload Base functions for SFTP file system
 
 """
     pwd(server::SFTP)::String
@@ -29,7 +45,7 @@ function Base.readdir(server::SFTP, dir::String; join::Bool=false, change::Bool=
 end
 
 
-## API functions
+#* Main function for download from server
 """
     sftp_download(
       user::String,
@@ -40,10 +56,11 @@ end
       version::Float64 = 4.20,
       remoteroot::String = "/SPACEBORNE/CALIOP/",
       localroot::String = ".",
-      logfile::String = "ICAREdownloads.log",
       format::UInt8 = 0x02,
       update::Bool = false,
-      remoteext::String = ".hdf"
+      remoteext::String = ".hdf",
+      logfile::String = "downloads.log",
+      loglevel::Symbol = :Debug
     )::Nothing
 
 Download satellite data from the Aeris/ICARE server.
@@ -93,6 +110,18 @@ Format options are given as `UInt8`. The following options are available:
 Only missing files will be downloaded. Already downloaded files will be skipped.
 If `update` is set to `true`, the modified dates of the local and remote files are
 compared and newer files will be downloaded from the server.
+
+A log file `downloads_<timestamp>.log` will be created in the `product` main folder,
+where the timestamp in the format `yyyy_mm_dd_HH_MM_SS` is added automatically to the
+file. You can change the file name (the timestamp will also be added to the new file name).
+If the log file includes a path, it will be saved to that directory instead.
+The number of log messages can be influenced with the `loglevel` keyword given as
+a `Symbol`. The following options exist:
+
+- `:Error`: Only errors (and severe warnings) are shown.
+- `:Warn`: Warnings and errors are shown.
+- `:Info`: Info messages are shown additionally.
+- `:Debug`: All log messages are shown.
 """
 function sftp_download(
   user::String,
@@ -105,25 +134,56 @@ function sftp_download(
   localroot::String = ".",
   format::UInt8 = 0x02,
   update::Bool = false,
-  remoteext::String = ".hdf"
+  remoteext::String = ".hdf",
+  logfile::String = "downloads.log",
+  loglevel::Symbol = :Debug
 )::Nothing
   # Get connection to server, go to product folder on remote
   icare = connect(user, password, product, version, remoteroot, remoteext)
   # Create product folder, if not existent
   productfolder = set_localroot(localroot, icare.productfolder)
-  # Read server data, if available
-  inventory = product_database(icare, productfolder)
-  # Get folder structure from server
-  folders = folderstructure(icare, startdate, enddate)
-  # Loop over folders, download missing data from server
-  for folder in folders, date in folder.dates
-    # Match folder structure with server
-    datadir = (; :abs=>joinpath(productfolder, folder.year, date), :rel=>joinpath(folder.year, date))
-    mkpath(datadir.abs)
-    date = remotefiles!(icare, inventory, datadir.rel, productfolder)
-    # Download files from ICARE server to local directory
-    download(icare, inventory, datadir, date, format, update)
-  end
+  # Start logging
+  logfile, level = init_logging(logfile, productfolder, loglevel)
+  open(logfile, "w") do logio
+    logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+    Logging.with_logger(logger) do
+      @info "downloading \"$product\" data, version $version to \"$productfolder\"" icare.productpath
+    end
+    # Read server data, if available
+    inventory = product_database(icare, productfolder)
+    # Get folder structure from server
+    folders = folderstructure(icare, startdate, enddate, logger)
+    # Log download session
+    t0 = Dates.now()
+    Logging.with_logger(logger) do
+      formats = [".hdf", ".h5"]
+      not = update ? "" : " not"
+      @info "data files downloaded in $(formats[bits(format)[1:2]]) format"
+      @info "files will$not be updated, if newer files are available on the server"
+      @info "starting downloads @$(t0)"
+    end
+    # Loop over folders, download missing data from server
+    counter = Counter()
+    try
+      for folder in folders, date in folder.dates
+        # Match folder structure with server
+        datadir = (; :abs=>joinpath(productfolder, folder.year, date), :rel=>joinpath(folder.year, date))
+        mkpath(datadir.abs)
+        date = remotefiles!(icare, inventory, datadir.rel, productfolder)
+        # Download files from ICARE server to local directory
+        counter = download(icare, inventory, datadir, date, format, update, logger, logio, counter)
+      end #loop over dates/data files
+    catch error
+      rethrow(error)
+    finally
+      # Log end of download session
+      t1 = Dates.now()
+      Logging.with_logger(logger) do
+        @info "$(counter.downloads) files downloaded in $(Dates.canonicalize(t1-t0)) @$(t1)"
+        @info "$(counter.skipped) files were already previously downloaded"
+      end
+    end
+  end #logging
 end #function ftp_download
 
 
@@ -173,21 +233,33 @@ end
 
 
 """
-    folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
+    folderstructure(
+      icare::Connection,
+      startdate::Int,
+      enddate::Int,
+      logger::Logging.ConsoleLogger
+    )::Vector{DataStorage}
 
 Analyse the folder structure on the `icare` server and return a vector of
 `DataStorage` structs holding the relevant folders for each year between the
-`startdate` and the `enddate`.
+`startdate` and the `enddate`. Use `logger` to log to log file.
 """
- function folderstructure(icare::Connection, startdate::Int, enddate::Int)::Vector{DataStorage}
+ function folderstructure(
+  icare::Connection,
+  startdate::Int,
+  enddate::Int,
+  logger::Logging.ConsoleLogger
+)::Vector{DataStorage}
   # Convert integer dates to dates
   enddate > 0 || (enddate = startdate)
   startdate, enddate = convertdates(startdate, enddate)
-
+  Logging.with_logger(logger) do
+    @info "Downloading for dates $startdate – $enddate"
+  end
   # Define years and dates in range
   folders = datafolders(startdate, enddate)
   # Loop over all dates
-  missing_years = Int[]
+  years_without_data = Int[]
   for (i, folder) in enumerate(folders)
     # Sync local with remote folders, remove missing years
     remotefolders = try readdir(icare.server, joinpath(icare.productpath, folder.year), change=true)
@@ -197,11 +269,23 @@ Analyse the folder structure on the `icare` server and return a vector of
     # Remove missing remote date folders in local folders
     intersect!(folder.dates, remotefolders)
     # Set year without dates empty
-    isempty(folder.dates) && push!(missing_years, i)
+    isempty(folder.dates) && push!(years_without_data, i)
   end #loop over dates
-  # Clean-up
+  # Clean-up and logging
   cd(icare.server, icare.productpath)
-  deleteat!(folders, missing_years)
+  missing_years = [tryparse(Int, folder.year) for folder in folders[years_without_data]]
+  deleteat!(folders, years_without_data)
+  dates = sum(length(d.dates) for d in folders)
+  s = dates > 1 ? "s" : ""
+  Logging.with_logger(logger) do
+    @info "'$(icare.extension)' data files for $dates date$s available for download"
+    for data in folders
+      @info "$(data.year)" dates = replace.(data.dates, "_"=>"-")
+    end
+    if !isempty(missing_years)
+      @warn "no data available for the following years" missing_years _module=nothing _file=nothing _line=nothing
+    end
+  end
 
   return folders
 end #function setup_download
@@ -322,7 +406,6 @@ function remotefiles!(
     # Update inventory metadata
     inventory[0]["file"]["count"] += length(files)
     inventory[0]["server"]["updated"] = Dates.now()
-    @show length(files)
     YAML.write_file(joinpath(productdir, "inventory.yaml"), inventory)
   end
   return (; :year=>y, :month=>m, :day=>d)
@@ -378,12 +461,16 @@ end #function convertdates!
       files::Vector{String},
       datadir::String,
       format::UInt8,
-      update::Bool
-    )::Nothing
+      update::Bool,
+      logger::Logging.ConsoleLogger,
+      logio::IOStream,
+      counter::Counter
+    )::Coutner
 
 Download the `files` from the `icare` server and save in the specified `format`
 to the given `datadir`. If set, `update` files to the latest version available
-on the server.
+on the server. Log `logger` events to a log file in the `logio` I/O stream.
+Return an updated `counter` of how many files were downloaded or skipped.
 """
 function download(
   icare::Connection,
@@ -391,14 +478,20 @@ function download(
   datadir::@NamedTuple{abs::String,rel::String},
   date::@NamedTuple{year::Int,month::Int,day::Int},
   format::UInt8,
-  update::Bool
-)::Nothing
+  update::Bool,
+  logger::Logging.ConsoleLogger,
+  logio::IOStream,
+  counter::Counter
+)::Counter
   # TODO use several threds for parallel downloads
   files = inventory[date.year][date.month][date.day]
-  pm.@showprogress 1 "$(Dates.format(Dates.Date(basename(datadir.rel), "y_m_d"), "yyyy-mm-dd")):" for (file, data) in files
-    download_data(icare, file, datadir, data, format, update)
+  try
+    pm.@showprogress 1 "$(replace(basename(datadir.rel), "_"=>"-")):" for (file, data) in files
+      download_data(icare, file, datadir, data, format, update, logger, logio, counter)
+    end
+  finally
+    return counter
   end
-  return
 end
 
 
@@ -409,8 +502,11 @@ end
       datadir::@NamedTuple{abs::String,rel::String},
       filestats::SortedDict,
       format::UInt8,
-      update::Bool
-    )::Nothing
+      update::Bool,
+      logger::Logging.ConsoleLogger,
+      logio::IOStream,
+      counter::Counter
+    )::Counter
 
 Check whether the current `file` has already been downloaded by comparing it to the
 `icare` `filestats`, otherwise download it from the `datadir` on the `icare` server
@@ -419,7 +515,8 @@ to the local `datadir` in the specified format:
 - HDF5: `0x02` or `0b10`
 - both: `0x03` or `0b11`
 Newer versions of existing local files are only downloaded from the `icare` server,
-if `update` is set to `true`.
+if `update` is set to `true`. Log `logger` events to a log file in the `logio` I/O stream.
+Return an updated `counter` of how many files were downloaded or skipped.
 """
 function download_data(
   icare::Connection,
@@ -427,13 +524,24 @@ function download_data(
   datadir::@NamedTuple{abs::String,rel::String},
   filestats::SortedDict,
   format::UInt8,
-  update::Bool
-)::Nothing
+  update::Bool,
+  logger::Logging.ConsoleLogger,
+  logio::IOStream,
+  counter::Counter
+)::Counter
+  t0 = Dates.now()
   for i = 1:5
     # Set flag for presence of hdf file
     h4 = isfile(file)
     # Check download status (no directory needed, already in product directory)
-    downloaded(file, datadir.abs, filestats, format, update) && break
+    if downloaded(file, datadir.abs, filestats, format, update)
+      Logging.with_logger(logger) do
+        @debug "$file already downloaded, skipping download" _module=nothing _file=nothing _line=nothing
+      end
+      flush(logio)
+      counter.skipped += 1
+      return counter
+    end
     # Download data
     cd(icare.server, joinpath(icare.productpath, datadir.rel))
     sftp.download(icare.server, file*icare.extension, downloadDir=datadir.abs)
@@ -450,10 +558,20 @@ function download_data(
       rm(joinpath(datadir.abs, file)*".hdf")
     end
     # Abort download attempts after fifth try
-    if !downloaded(file, datadir.abs, filestats, format, update)
+    if downloaded(file, datadir.abs, filestats, format, update)
+      t1 = Dates.now()
+      s = i > 1 ? "s" : ""
+      Logging.with_logger(logger) do
+        @debug "$file downloaded in $i attempt$s in $(Dates.canonicalize(t1-t0)) @$t1" _module=nothing _file=nothing _line=nothing
+      end
+      flush(logio)
+      counter.downloads +=1
+      break
+    elseif i == 5
       throw(Base.IOError("Could not download $(file*icare.extension); aborting further download attempts", 3))
     end
   end
+  return counter
 end #function download_data
 
 

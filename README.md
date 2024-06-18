@@ -34,10 +34,11 @@ function sftp_download(
   version::Float64 = 4.20,
   remoteroot::String = "/SPACEBORNE/CALIOP/",
   localroot::String = ".",
-  logfile::String = "ICAREdownloads.log",
   format::UInt8 = 0x02,
   update::Bool = false,
-  remoteext::String = ".hdf"
+  remoteext::String = ".hdf",
+  logfile::String = "downloads.log",
+  loglevel::Symbol = :Debug
 )::Nothing
 ```
 
@@ -88,6 +89,22 @@ setting the `format` flag. The `UInt8` input can be given in hex or binary forma
 - HDF4: `0x01` or `0b01`
 - HDF5: `0x02` or `0b10`
 - both: `0x03` or `0b11`
+
+### Logging
+
+Download sessions are logged to a log file in addition to the progress bar for downloads
+of each date. You can specify the directory and file name with the `logfile` keyword 
+argument. By default, all log files are written to the main folder of each `product`.
+By passing a valid path (relative or absolute) within the `logfile` keyword, this position 
+can be changed as well as the file name, e.g. to save the log file in the parent folder of 
+your current directory, rename it to "CALIOPdownloads" and chang the extension to ".txt", use
+`../CALIOPdownloads.txt`. 
+
+To all log files a timestamp will be added automatically in the format `yyyy_mm_dd_HH_MM_SS`. 
+All log files have the format `path/to/logfile_<timestamp>.ext`.
+This has the advantage that names can be reused for several download sessions and the 
+standard file name does not have to be changed. One can also see, when files where last 
+downloaded from a glance.
 
 ### Example script
 
