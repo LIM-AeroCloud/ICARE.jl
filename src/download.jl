@@ -152,7 +152,7 @@ function sftp_download(
     # Read server data, if available
     inventory = product_database(icare, productfolder)
     # Get folder structure from server
-    folders = folderstructure(icare, startdate, enddate, logger)
+    folders = folderstructure(icare, startdate, enddate, productfolder, logger)
     # Log download session
     t0 = Dates.now()
     Logging.with_logger(logger) do
@@ -237,17 +237,25 @@ end
       icare::Connection,
       startdate::Int,
       enddate::Int,
+      inventory::SortedDict,
+      productfolder::String,
       logger::Logging.ConsoleLogger
     )::Vector{DataStorage}
 
 Analyse the folder structure on the `icare` server and return a vector of
 `DataStorage` structs holding the relevant folders for each year between the
-`startdate` and the `enddate`. Use `logger` to log to log file.
+`startdate` and the `enddate`.
+
+Update the `inventory` according to the folder structure and save to the
+`inventory.yaml` in the `productfolder`. Use `logger` to log to the given log file.
+
 """
  function folderstructure(
   icare::Connection,
   startdate::Int,
   enddate::Int,
+  inventory::SortedDict,
+  productfolder::String,
   logger::Logging.ConsoleLogger
 )::Vector{DataStorage}
   # Convert integer dates to dates
@@ -264,10 +272,10 @@ Analyse the folder structure on the `icare` server and return a vector of
     # Sync local with remote folders, remove missing years
     remotefolders = try readdir(icare.server, joinpath(icare.productpath, folder.year), change=true)
     catch error
-      error isa sftp.RequestError && error.code == 78 ? [] : rethrow(error)
+      error isa sftp.RequestError && error.code == 78 ? String[] : rethrow(error)
     end
     # Remove missing remote date folders in local folders
-    intersect!(folder.dates, remotefolders)
+    rm_missingdates!(folder.dates, remotefolders, inventory, productfolder)
     # Set year without dates empty
     isempty(folder.dates) && push!(years_without_data, i)
   end #loop over dates
@@ -275,7 +283,10 @@ Analyse the folder structure on the `icare` server and return a vector of
   cd(icare.server, icare.productpath)
   missing_years = [tryparse(Int, folder.year) for folder in folders[years_without_data]]
   deleteat!(folders, years_without_data)
-  dates = sum(length(d.dates) for d in folders)
+  dates = try sum(length(d.dates) for d in folders)
+  catch
+    0
+  end
   s = dates > 1 ? "s" : ""
   Logging.with_logger(logger) do
     @info "'$(icare.extension)' data files for $dates date$s available for download"
@@ -356,6 +367,44 @@ function datafolders(start::Date, stop::Date)::Vector{DataStorage}
   end
   # Return Vector of DataStorage structs
   return folders
+end
+
+
+"""
+    rm_missingdates!(
+      localfolders::Vector{String},
+      remotefolders::Vector{String},
+      inventory::SortedDict,
+      productfolder::String
+    )::Nothing
+
+Remove dates in `localfolders` where missing in `remotefolders`.
+Update the `inventory` with missing dates and save to the `inventory.yaml` in the
+`productfolder`.
+"""
+function rm_missingdates!(
+  localfolders::Vector{String},
+  remotefolders::Vector{String},
+  inventory::SortedDict,
+  productfolder::String
+)::Nothing
+  # Restrict remote folder to bounds of local folders
+  filter!(d -> localfolders[1] ≤ d ≤ localfolders[end], remotefolders)
+  # Add missing dates to inventory
+  missed = false
+  missing_dates = setdiff(localfolders, remotefolders)
+  for date in missing_dates
+    y, m, d = parse.(Int, split(date, "_"))
+    hasentry!(inventory, y, m, d) || (missed = true)
+  end
+  # Update inventory.yaml
+  if missed
+    println("missed")
+    YAML.write_file(joinpath(productfolder, "inventory.yaml"), inventory)
+  end
+  # Remove missing dates from local folder list
+  intersect!(localfolders, remotefolders)
+  return
 end
 
 

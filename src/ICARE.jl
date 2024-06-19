@@ -29,9 +29,11 @@ export sftp_download, hdfupgrade, pwd, readdir
 # TODO routine to clean up additional files (same with flags or different from above)
 # * different levels of severity:
 # - everything but hdf files
+# - everything but specific (hdf/h5) hdf files
 # - everything that is not matched with files on server
 # - every hdf(4) that has not the same file size as on server (if hdf4)
 # - everything that is older than files on server
+# TODO search for missing files in present folders
 
 # TODO Functions that only scan server without downloading: scan(user, password, product, startdate,
 # TODO   stopdate, version=4.2, remoteroot="...", remoteext=".hdf", logfile="scans.log", loglevel=:Debug)
@@ -138,5 +140,6 @@ end
 # Include source files
 include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion
+include("sync.jl") # routines related to syncing local and remote directories
 
 end #module ICARE
