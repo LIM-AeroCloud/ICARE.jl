@@ -214,7 +214,7 @@ end
       user::String,
       password::String,
       logger::Logging.ConsoleLogger
-    )::Tuple{Union{SFTP,Nothing},OrderedDict}
+    )::Tuple{Union{SFTP.Client,Nothing},OrderedDict}
 
 Load the inventory in the given `productfolder` of the `localroot`.
 Additionally, access ICARE server data, if the `user` name, `password`, and `remoteroot`
@@ -228,7 +228,7 @@ function load_database(
   user::String,
   password::String,
   logger::Logging.ConsoleLogger
-)::Tuple{Union{SFTP,Nothing},OrderedDict}
+)::Tuple{Union{SFTP.Client,Nothing},OrderedDict}
   # Setup
   icare = nothing
   productpath = joinpath(localroot, productfolder)
@@ -311,7 +311,7 @@ end
 """
     in_database(
       inventory::OrderedDict,
-      icare::SFTP,
+      icare::SFTP.Client,
       root::String,
       path::String,
       file::String,
@@ -334,7 +334,7 @@ Return an error code for possible events:
 """
 function in_database(
   inventory::OrderedDict,
-  icare::SFTP,
+  icare::SFTP.Client,
   root::String,
   path::String,
   file::String,

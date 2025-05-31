@@ -8,8 +8,7 @@ CALIOP data files in a specified time frame.
 module ICARE
 
 # Import Julia Packages and Types
-import SFTPClient as sftp
-import SFTPClient: SFTP
+import SFTP
 import Bits: bits
 import ProgressMeter as pm
 import Dates
@@ -76,6 +75,6 @@ __init__()
 # Include source files
 include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion
-include("sync.jl") # routines related to syncing local and remote directories
+# TODO include("sync.jl") # routines related to syncing local and remote directories
 
 end #module ICARE

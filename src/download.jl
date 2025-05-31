@@ -20,7 +20,7 @@ mutable struct Counter
 end
 
 ## API functions
-#* Overload Base functions for SFTP file system
+#= Overload Base functions for SFTP file system
 
 """
     pwd(server::SFTP)::String
@@ -47,6 +47,7 @@ function Base.readdir(server::SFTP, dir::String; join::Bool=false, change::Bool=
   change || cd(server, cwd)
   return files
 end
+=#
 
 
 #* Main function for download from server
@@ -224,22 +225,22 @@ end #function ftp_download
       password::String,
       root::String,
       product::String
-    )::SFTP
+    )::SFTP.Client
 
 Securely connect to the server with SFTP using the credentials `user` and `password`
 and changing to the `product` folder in the `root` directory.
 
 Several checks are performed about the connection and folder structure and a
-`SFTP` type with all the relevant information about the server is returned.
+`SFTP.Client` type with all the relevant information about the server is returned.
 """
 function icare_connect(
   user::String,
   password::String,
   root::String,
   product::String
-)::SFTP
+)::SFTP.Client
   # Connect to server and go to root of selected data
-  icare = SFTP("sftp://sftp.icare.univ-lille.fr", user, password)
+  icare = SFTP.Client("sftp://sftp.icare.univ-lille.fr", user, password)
   try cd(icare, root)
   catch err
     rethrow(err)
@@ -284,7 +285,7 @@ end
 
 """
     product_database(
-      icare::SFTP,
+      icare::SFTP.Client,
       remoteroot::String,
       localroot::String,
       product::String,
@@ -303,7 +304,7 @@ outside the `inventory` date range, the `inventory` is updated for these extende
 periods. Updates are logged to the screen and the log file with `logger`.
 """
 function product_database(
-  icare::SFTP,
+  icare::SFTP.Client,
   remoteroot::String,
   localroot::String,
   product::String,
@@ -390,7 +391,7 @@ end
 
 """
     sync_database!(
-      icare::SFTP,
+      icare::SFTP.Client,
       inventory::OrderedDict,
       years::Vector{Int},
       update_inventory::Bool
@@ -400,7 +401,7 @@ Sync the `inventory` with the `icare` server for the given `years`.
 Update the inventory, if `update_inventory` is set to `true`.
 """
 function sync_database!(
-  icare::SFTP,
+  icare::SFTP.Client,
   inventory::OrderedDict,
   years::Vector{Int},
   update_inventory::Bool
@@ -515,7 +516,7 @@ end
 
 """
     remotefiles!(
-      icare::SFTP,
+      icare::SFTP.Client,
       inventory::OrderedDict,
       datadir::String,
       date::Date
@@ -527,7 +528,7 @@ Save the updated `inventory` as yaml file to the product folder and return the e
 of the datafiles used on the server.
 """
 function remotefiles!(
-  icare::SFTP,
+  icare::SFTP.Client,
   inventory::OrderedDict,
   datadir::String,
   date::Date
@@ -537,7 +538,7 @@ function remotefiles!(
     return inventory["metadata"]["file"]["ext"]
   isempty(inventory[date]) || return inventory["metadata"]["file"]["ext"]
   # Get stats of remote files (without the current and parent folders)
-  stats = sftp.sftpstat(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) |>
+  stats = SFTP.statscan(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) |>
     filter(s->!startswith(s.desc, "."))
   files = [splitext(s.desc)[1] for s in stats]
   filesize = [s.size for s in stats]
@@ -586,7 +587,7 @@ end #function convertdates!
 
 """
     download!(
-      icare::SFTP,
+      icare::SFTP.Client,
       inventory::OrderedDict,
       datadir::String,
       date::Date,
@@ -605,7 +606,7 @@ Log `logger` events to a log file in the `logio` I/O stream.
 Return an updated `counter` of how many files were downloaded, converted or skipped.
 """
 function download!(
-  icare::SFTP,
+  icare::SFTP.Client,
   inventory::OrderedDict,
   datadir::String,
   date::Date,
@@ -641,7 +642,7 @@ function download!(
       for i = 1:5
         # Download file
         if !file_pulled(inventory["metadata"]["file"]["ext"], datafile, inventory[date][file], update)
-          sftp.download(icare, file*inventory["metadata"]["file"]["ext"], downloadDir=datapath)
+          download(icare, file*inventory["metadata"]["file"]["ext"], downloadDir=datapath)
         end
         # Convert to h5, if option is set
         hdf_format = bits(format)
@@ -666,7 +667,7 @@ function download!(
         elseif i == 2 && hdf_format[1]
           # Update remote file stats after 2 failed download attempts
           # to prevent re-downloads because of wrong file stats
-          stats = sftp.sftpstat(icare)
+          stats = SFTP.statscan(icare)
           n = findfirst(isequal(file*inventory["metadata"]["file"]["ext"]), f.desc for f in stats)
           inventory[date][file]["size"] = stats[n].size
           inventory[date][file]["mtime"] = stats[n].mtime
