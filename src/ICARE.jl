@@ -13,7 +13,7 @@ import SFTP: Downloads.RequestError
 import Bits: bits
 import ProgressMeter as pm
 import Dates
-import Dates: Date
+import Dates: Date, DateTime
 import Printf: @sprintf
 import YAML
 import Logging

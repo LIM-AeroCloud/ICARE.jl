@@ -382,7 +382,7 @@ function in_database(
                 return 4 # ℹ EC4: file not on server
             end
         end
-    # issue: The following errors should not occur (and be caught elswhere)
+    # issue: The following errors should not occur (and be caught elsewhere)
     elseif d in inventory["metadata"]["database"]["gaps"]
         return 5 # ℹ EC5: no data reported for date
     elseif d < inventory["metadata"]["database"]["start"] || d > inventory["metadata"]["database"]["stop"]
@@ -401,7 +401,7 @@ Credentials are not checked for validity, only that they are not empty.
 credentials(user::String, password::String)::Bool = !isempty(user) && !isempty(password)
 
 
-#* Download routines
+#* Conversion routines
 
 """
     convert_hdffile!(
