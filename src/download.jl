@@ -172,7 +172,7 @@ function sftp_download(
             @info "downloading \"$product\" data, version $version, to \"$productpath\""
         end
         # Get available server dates
-        inventory = product_database(icare, remoteroot, localroot, product, daterange, update_inventory, logger)
+        inventory, updated = product_database(icare, remoteroot, localroot, product, daterange, update_inventory, logger)
         # Log download session
         t0 = Dates.now()
         Logging.with_logger(logger) do
@@ -194,15 +194,14 @@ function sftp_download(
                 # Match folder structure with server
                 datadir = joinpath(string(Dates.year(date)), Dates.format(date, "yyyy_mm_dd"))
                 mkpath(joinpath(productpath, datadir))
-                remotefiles!(icare, inventory, datadir, date)
+                # remotefiles!(icare, inventory, datadir, date) # DEPRECATED (done during database sync)
                 # Change to ICARE folder and download files from server to local directory
-                cd(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) # deprecate
-                counter = download!(icare, inventory, datadir, date, format, update, logger, logio, counter)
+                cd(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) # DEPRECATE
+                updated |= download!(icare, inventory, datadir, date, format, update, logger, logio, counter)
             end #loop over dates/data files
-        catch error
-            rethrow(error)
         finally
-            #* Log end of download session
+            #* Log end of download session and save inventory
+            updated && save_inventory(inventory)
             t1 = Dates.now()
             log_counter(counter, logger, t0, t1)
         end
@@ -317,15 +316,16 @@ end
         stopdate::Date,
         update_inventory::Bool,
         logger::Logging.ConsoleLogger
-    ) -> OrderedDict
+    ) -> OrderedDict, Bool
 
-Return the inventory of `icare` server-side data files for the `product` in the
-`remoteroot` directory and save it to the inventory.xml in the `prodcut` folder
-in the `localroot`.
+Return the inventory of `icare` server-side data files for the `product` in the `remoteroot`
+directory and save it to the inventory.yaml in the `prodcut` folder in the `localroot`.
+Additonally, return a `Bool` indicating whether the inventory was updated.
 Either read the database from the yaml file in the `product` folder or initialise
 a new empty database. If the `startdate` or `enddate` of the selected dates is
 outside the `inventory` date range, the `inventory` is updated for these extended
 periods. Updates are logged to the screen and the log file with `logger`.
+# Update: Use of flags for inventory update
 """
 function product_database(
     icare::SFTP.Client,
@@ -335,7 +335,7 @@ function product_database(
     daterange::@NamedTuple{start::Date,stop::Date},
     update::Bool,
     logger::Logging.ConsoleLogger
-)::OrderedDict
+)::Tuple{OrderedDict,Bool}
     # Defining inventory source file and available years on server
     @info "Syncing inventory with ICARE server"
     database = joinpath(localroot, product, "inventory.yaml")
@@ -344,24 +344,14 @@ function product_database(
         # Read available inventory
         inventory = load_inventory(database)
         # Update years of interest based on inventory and update options
-        update_inventory!(inventory, years, daterange, localroot, product, update, logger)
+        updated = filter_years!(inventory, years, daterange, localroot, product, update, logger)
     else
         # Init empty inventory, if yaml is missing
         inventory = new_inventory(remoteroot, localroot, product, logger)
+        updated = true
     end
-
-    if sync_database!(icare, inventory, years, update)
-        # Save gaps in current date range
-        data_gaps!(inventory, daterange, logger)
-        # Save update time, if dates were added during database sync
-        database["updated"] = Dates.now()
-        # Save updated inventory to file
-        YAML.write_file(database, inventory)
-        Logging.with_logger(logger) do
-            @info "inventory synced with ICARE server in date range $(inventory["metadata"]["database"]["start"]) – $(inventory["metadata"]["database"]["stop"])"
-        end
-    end
-    return inventory
+    updated |= sync_database!(icare, inventory, years, update, logger)
+    return inventory, updated
 end
 
 
@@ -382,8 +372,12 @@ end
 Save inventory to a yaml file in the product path.
 """
 function save_inventory(inventory::OrderedDict)::Nothing
-  inventory["metadata"]["database"]["updated"] = Dates.now()
-  YAML.write_file(joinpath(inventory["metadata"]["local"]["path"], "inventory.yaml"), inventory)
+    # Define inventory file
+    file = joinpath(inventory["metadata"]["local"]["path"], "inventory.yaml")
+    @info "saving inventory to '$file'"
+    # Save invetory with updated mtime
+    inventory["metadata"]["database"]["updated"] = Dates.now()
+    YAML.write_file(file, inventory)
 end
 
 
@@ -422,7 +416,10 @@ function new_inventory(
             "database" => OrderedDict{String,Any}(
                 "dates" => 0,
                 "start" => Date(9999),
-                "stop" => Date(0)
+                "stop" => Date(0),
+                "created" => Dates.now(),
+                "updated" => Dates.now(),
+                "gaps" => Vector{Date}()
             )
         ),
         "dates" => OrderedDict{Date,OrderedDict}()
@@ -431,19 +428,20 @@ end
 
 
 """
-    update_inventory!(
+    filter_years!(
         inventory::OrderedDict,
         years::Vector{Int},
         localroot::String,
         product::String,
         update::Bool
-    )
+    ) -> Bool
 
 Check, if the `localroot` has changed and update the root path and the path to the
-`product` main folder in the `inventory`.
+`product` main folder in the `inventory`. #REFACTOR
 Filter for `years` outside the range of the inventory, to `update` the inventory.
+Return a `Bool` whether the inventory has been updated.
 """
-function update_inventory!(
+function filter_years!(
     inventory::OrderedDict,
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
@@ -451,19 +449,23 @@ function update_inventory!(
     product::String,
     update::Bool,
     logger::Logging.ConsoleLogger
-)::Nothing
+)::Bool
     # Consider years outside the range of the inventory, if update is not selected
+    updated = false
     if !update
         Logging.with_logger(logger) do
             @info "Checking for new data not yet considered in the inventory"
         end
         #* Filter years outside date range
-        # ℹ border years are only considered, if the new date is outside the known date of the inventory
-        lt = (daterange.start > inventory["metadata"]["database"]["start"]) ? (<) : (≤)
-        gt = daterange.stop < inventory["metadata"]["database"]["stop"] ? (>) : (≥)
-        filter!(t -> lt(t, Dates.year(inventory["metadata"]["database"]["start"])) ||
-            gt(t, Dates.year(inventory["metadata"]["database"]["stop"])), years)
+        # ℹ border years are only considered, if the new date is outside the known date of the
+        # inventory
+        start, stop = inventory["metadata"]["database"]["start"], inventory["metadata"]["database"]["stop"]
+        lt = daterange.start ≥ start || Dates.dayofyear(start) == 1 ? (<) : (≤)
+        gt = daterange.stop ≤ stop || Dates.dayofyear(stop) == Dates.daysinyear(stop) ? (>) : (≥)
+        filter!(t -> lt(t, Dates.year(start)) || gt(t, Dates.year(stop)), years)
     end
+    # Refactor into separate function
+    # Check correct local root is saved (folder hasn't been moved)
     origin = inventory["metadata"]["local"]["root"]
     if localroot ≠ origin
         origin = joinpath(origin, product)
@@ -471,8 +473,9 @@ function update_inventory!(
         @warn "product folder was recently moved; updating inventory" origin update
         inventory["metadata"]["local"]["root"] = localroot
         inventory["metadata"]["local"]["path"] = update
-        inventory["metadata"]["database"]["updated"] = Dates.now() # deprecate (only update once at the end)
+        updated = true
     end
+    return updated
 end
 
 
@@ -492,13 +495,14 @@ function sync_database!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     years::Vector{Int},
-    update_inventory::Bool
+    update_inventory::Bool,
+    logger::Logging.ConsoleLogger
 )::Bool
     # Flag to treat first year differently than remaining years
     firstdate = true
     # Monitor updates
     updated = false
-    # Define shortcuts for metadata and save current date range
+    # Define views on metadata and save current date range
     database = inventory["metadata"]["database"]
     server = inventory["metadata"]["server"]
     db = (;:start => database["start"], :stop => database["stop"])
@@ -507,24 +511,37 @@ function sync_database!(
         # Save new years to inventory and sync dates with server
         folders = readdir(icare, joinpath(server["root"], server["product"], string(year)))
         dates = Date.(folders, "yyyy_mm_dd")
+        update_inventory || filter!(d -> !(db.start ≤ d ≤ db.stop), dates)
+        @debug "processing" dates
+        # Save data gaps to inventory
+        updated |= data_gaps!(inventory, dates)
         # Get date range in current year
         start, stop = dates[[begin, end]]
         if firstdate
             firstdate = false
             # Adjust start date in inventory metadata, if necessary
-            start < db.start && (database["start"] = start)
+            if start < db.start
+                database["start"] = start
+                updated = true
+            end
             # Add first date to inventory (needed for file extension) and update file metadata
-            add_date!(inventory, dates[1])
-            remotefiles!(icare, inventory, joinpath(string(year), folders[1]), dates[begin])
+            updated |= add_date!(inventory, dates[1])
+            updated |= remotefiles!(icare, inventory, joinpath(string(year), folders[1]), dates[begin])
         end
         # Update stop date, if necessary
-        stop > db.stop && (database["stop"] = stop)
-        # Skip dates already in the database
-        db.start ≤ start && db.stop ≥ stop && !update_inventory && continue
-        # Loop of dates in the current year and add missing dates to inventory
+        if stop > db.stop
+            database["stop"] = stop
+            updated = true
+        end
+        #* Loop over dates in the current year and add missing dates to inventory
         for date in dates
             updated |= add_date!(inventory, date)
         end
+    end
+    display_gaps(inventory, db, logger)
+
+    updated && Logging.with_logger(logger) do
+        @info "inventory synced with ICARE server in date range $(db.start) – $(db.stop)"
     end
     return updated
 end
@@ -537,41 +554,47 @@ Add the given `date` to the `inventory`, if missing, and update the metadata of 
 Return `true`, if date was added, otherwise `false`.
 """
 function add_date!(inventory::OrderedDict, date::Date)::Bool
-    haskey(inventory, date) && return false
-    inventory[date] = OrderedDict{String,OrderedDict}()
+    haskey(inventory["dates"], date) && return false
+    inventory["dates"][date] = OrderedDict{String,OrderedDict}()
     inventory["metadata"]["database"]["dates"] += 1
     return true
 end
 
 
 """
-    data_gaps!(
-      inventory::OrderedDict,
-      startdate::Date,
-      stopdate::Date,
-      logger::Logging.ConsoleLogger
+    data_gaps!(inventory::OrderedDict, dates::Vector{Date}) -> Bool
+
+Extent data gaps in the `inventory` by gaps in `dates`. Return a `Bool` indicating new gaps.
+"""
+function data_gaps!(inventory::OrderedDict, dates::Vector{Date})::Bool
+    new_gaps = setdiff(dates, dates[begin]:dates[end])
+    gaps = inventory["metadata"]["database"]["gaps"]
+    gaps = union(gaps, new_gaps) |> sort
+    return !isempty(new_gaps)
+end
+
+
+"""
+    display_gaps(
+        inventory::OrderedDict,
+        daterange::@NamedTuple{start::Date,stop::Date},
+        logger::Logging.ConsoleLogger
     )
 
 
 Find dates with missing data and update the metadata of the `inventory`.
 In the time period between `startdate` and `stopdate`, log those dates to`logger`.
-# Fix to use gaps in metadata
 """
-function data_gaps!(
+function display_gaps(
     inventory::OrderedDict,
     daterange::@NamedTuple{start::Date,stop::Date},
     logger::Logging.ConsoleLogger
 )::Nothing
-    #* Get view on database data
+    #* Get gaps in current date range
     database = inventory["metadata"]["database"]
-    #* Update data gaps in inventory
-    dates = keys(inventory["dates"])
-    missing_dates = setdiff(database["start"]:database["stop"], dates)
-    database["gaps"] = missing_dates
-    #* Get gaps for current period and combine to ranges
-    # Get current range, return, if data has no gaps
-    current_gaps = intersect(range(daterange...), missing_dates)
+    current_gaps = database["gaps"] |> filter(d -> datarange.start ≤ d ≤ datarange.stop)
     isempty(current_gaps) && return
+    #* Combine dates to ranges
     current_range = [current_gaps[1]]
     gaps = String[]
     for date in current_gaps[2:end]
@@ -589,12 +612,18 @@ function data_gaps!(
     #* Log missing data
     # Note: The whole date range can be selected by choosing start date 0 and stop date 9999
     # Note: Warnings for dates outside the date range are switched off for this case
-    Date(0) < daterange.start < database["start"] && @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
-    Date(9999) > daterange.stop > database["stop"] &&  @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
+    # Log to screen
+    Date(0) < daterange.start < database["start"] &&
+        @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
+    Date(9999) > daterange.stop > database["stop"] &&
+        @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
     length(gaps) > 0 && @info "there are data gaps in the current date range" gaps
+    # Log to file
     Logging.with_logger(logger) do
-        Date(0) < daterange.start < database["start"] && @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
-        Date(9999) > daterange.stop > database["stop"] &&  @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
+        Date(0) < daterange.start < database["start"] &&
+            @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
+        Date(9999) > daterange.stop > database["stop"] &&
+            @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
         length(gaps) > 0 && @info "there are data gaps in the current date range" gaps
     end
 end
@@ -610,17 +639,17 @@ end
 
 Check, if the files on the `icare` server in the `datadir` path for the current `date`
 are already in the `inventory`, otherwise update the `inventory` (including the metadata).
-Save the updated `inventory` as yaml file to the product folder.
+Indicate updates in the `inventory` by the returned `Bool`.
 """
 function remotefiles!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     datadir::String,
     date::Date
-)::Nothing
+)::Bool
     # Entry checks
-    date in inventory["metadata"]["database"]["gaps"] && return
-    isempty(inventory[date]) || return # ¿ Update option ?
+    date in inventory["metadata"]["database"]["gaps"] && return false
+    isempty(inventory["dates"][date]) || return false # ¿ Update option ?
     # Get stats of remote files (without the current and parent folders)
     stats = SFTP.statscan(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir))
     files = [splitext(s.desc)[1] for s in stats]
@@ -629,7 +658,7 @@ function remotefiles!(
     sortorder = sortperm(files)
     # Save file stats to new inventory entry
     for i in sortorder
-        inventory[date][files[i]] = OrderedDict(
+        inventory["dates"][date][files[i]] = OrderedDict(
             "size" => filesize[i],
             "mtime" => Date(Dates.unix2datetime(mtime[i]))
         )
@@ -637,9 +666,8 @@ function remotefiles!(
     # Update inventory metadata
     file = inventory["metadata"]["file"]
     haskey(file, "ext") || (file["ext"] = splitext(stats[1].desc)[2])
-    inventory["metadata"]["file"]["count"] += length(files)
-    inventory["metadata"]["database"]["updated"] = Dates.now()
-    YAML.write_file(joinpath(inventory["metadata"]["local"]["path"], "inventory.yaml"), inventory)
+    file["count"] += length(files)
+    return true
 end
 
 
@@ -679,14 +707,14 @@ end
         logger::Logging.ConsoleLogger,
         logio::IOStream,
         counter::Counter
-    ) -> Counter
+    ) -> Bool
 
 Download the files for the selected `date` from the `icare` server and save in the
 specified `format` to the given `datadir`. If set, `update` files to the latest
 version available on the server. Dates and files are compared to the `inventory`
 and the `inventory` is updated, if necessary.
 Log `logger` events to a log file in the `logio` I/O stream.
-Return an updated `counter` of how many files were downloaded, converted or skipped.
+Return a `Bool` indicating `updates` in the `inventory`.
 """
 function download!(
     icare::SFTP.Client,
@@ -698,13 +726,14 @@ function download!(
     logger::Logging.ConsoleLogger,
     logio::IOStream,
     counter::Counter
-)::Counter
-    # TODO use several threds for parallel downloads
+)::Bool
+    # TODO use several threads for parallel downloads
     try
         #* Init
-        files = inventory[date]
+        files = inventory["dates"][date]
         datapath = joinpath(inventory["metadata"]["local"]["path"], datadir)
         pulled = false
+        updated = false
         #* Loop over files
         pm.@showprogress dt=1 desc="$date:" for file in keys(files)
             datafile = joinpath(datapath, file)
@@ -712,7 +741,7 @@ function download!(
             # Set flag for presence of hdf file
             h4 = isfile(datafile*".hdf") # Update: Generalize file extension (user choice with default)
             # Check download status (no directory needed, already in product directory)
-            if downloaded(datafile, inventory[date][file], format, update)
+            if downloaded(datafile, inventory["dates"][date][file], format, update)
                 pulled = true
                 Logging.with_logger(logger) do
                     @debug "$file already downloaded, skipping download" _module=nothing _file=nothing _line=nothing
@@ -724,7 +753,7 @@ function download!(
             #* Download data
             for i = 1:5
                 # Download file
-                if !file_pulled(inventory["metadata"]["file"]["ext"], datafile, inventory[date][file], update)
+                if !file_pulled(inventory["metadata"]["file"]["ext"], datafile, inventory["dates"][date][file], update)
                     download(icare, file*inventory["metadata"]["file"]["ext"], downloadDir=datapath)
                 end
                 # Convert to h5, if option is set
@@ -735,17 +764,18 @@ function download!(
                     # Convert hdf4 to hdf5
                     run(`h4toh5 $datafile.hdf`) # Update: Generalize file extension
                     # Add new file size to inventory
-                    # ¿ Move to separate function ?
-                    inventory[date][file]["h5size"] = filesize(joinpath(datafile*".h5")) # Update: Generalize file extension
-                    inventory["metadata"]["database"]["updated"] = Dates.now()
-                    YAML.write_file(joinpath(inventory["metadata"]["local"]["path"], "inventory.yaml"), inventory)
+                    h5size = filesize(joinpath(datafile*".h5")) # Update: Generalize file extension
+                    updated = if h5size != inventory["dates"][date][file]["h5size"]
+                        inventory["dates"][date][file]["h5size"] = h5size
+                        true
+                    end
                 end
                 # Delete HDF4 file, if hdf4 was unselected and file was not already present
                 if !hdf_format[1] && !h4
                     rm(datafile*".hdf", force=true) # Update: Generalize file extension
                 end
                 # Abort download attempts after fifth try
-                if downloaded(datafile, inventory[date][file], format, update)
+                if downloaded(datafile, inventory["dates"][date][file], format, update)
                     t1 = Dates.now()
                     s = i > 1 ? "s" : ""
                     Logging.with_logger(logger) do
@@ -764,17 +794,19 @@ function download!(
                     # to prevent re-downloads because of wrong file stats
                     stats = SFTP.statscan(icare)
                     n = findfirst(isequal(file*inventory["metadata"]["file"]["ext"]), f.desc for f in stats)
-                    inventory[date][file]["size"] = stats[n].size
-                    inventory[date][file]["mtime"] = stats[n].mtime
+                    if inventory["dates"][date][file]["size"] != stats[n].size ||
+                        inventory["dates"][date][file]["mtime"] != stats[n].mtime
+                        updated = true
+                    end
+                    inventory["dates"][date][file]["size"] = stats[n].size
+                    inventory["dates"][date][file]["mtime"] = stats[n].mtime
                 elseif i == 5
                     throw(Base.IOError("Could not download $(file*inventory["metadata"]["file"]["ext"]); aborting further download attempts", 3))
                 end
             end
         end
-    catch err
-        rethrow(err)
     finally
-        return counter
+        return updated
     end
 end
 
