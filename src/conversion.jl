@@ -267,6 +267,7 @@ function load_database(
     else
         throw(Base.IOError("missing inventory.yaml and ICARE user credentials; one or the other needed to proceed", 3))
     end
+    check_localroot(inventory, localroot, productfolder)
     return icare, inventory
 end
 
