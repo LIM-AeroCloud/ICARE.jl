@@ -27,7 +27,7 @@ function clean(
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
         Logging.with_logger(logger) do
-        @info "downloading \"$product\" data, version $version to \"$productfolder\"" icare.productpath
+        @info "downloading \"$product\" data to \"$productfolder\"" icare.productpath
         end
         # Read server data, if available
         inventory = product_database(icare, productfolder)
