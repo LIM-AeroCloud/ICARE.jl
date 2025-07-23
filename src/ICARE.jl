@@ -33,7 +33,7 @@ function __init__()::Nothing
     # Define dir for conversion tool and exe name and add to $PATH
     bindir = joinpath(homedir(), "tools")
     exec = joinpath(bindir, "h4toh5")
-    if !contains(ENV["PATH"], bindir)
+    if !contains(ENV["PATH"], bindir) && !contains(ENV["PATH"], "~/tools")
         @info "adding '$bindir' to PATH for current julia session"
         @info "add '$bindir' to PATH and export PATH in your rc-file to persistently use h4toh5 conversion from anywhere in the terminal"
         (ENV["PATH"] *= ":" * bindir)

@@ -263,7 +263,7 @@ function load_database(
         Logging.with_logger(logger) do
             @info "local inventory missing, checking against server only"
         end
-        product_database(icare, remoteroot, localroot, productfolder, Date(0), Date(9999), false, logger)
+        product_database(icare, localroot, productfolder, Date(0), Date(9999), false, logger)
     else
         throw(Base.IOError("missing inventory.yaml and ICARE user credentials; one or the other needed to proceed", 3))
     end

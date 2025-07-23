@@ -17,6 +17,21 @@ mutable struct Counter
 end
 
 
+#* Exceptions
+
+"""
+ConnectionError
+===============
+
+Thrown with a message as parameter, when no connection to the server can be established.
+"""
+struct ConnectionError <: Exception
+    msg::String
+end
+
+Base.show(io::IO, error::ConnectionError)::Nothing = println(io, "ConnectionError: $(error.msg)")
+
+
 """
     Counter(;downloads::Int=0, conversions::Int=0, skipped::Int=0) -> Counter
 
@@ -39,7 +54,7 @@ Counter(;downloads::Int=0, conversions::Int=0, skipped::Int=0)::Counter = Counte
         remoteroot::String = "/SPACEBORNE/CALIOP/",
         localroot::String = ".",
         format::UInt8 = 0x02,
-        force_update::Bool = false,
+        resync::Bool = false,
         logfile::String = "downloads.log",
         loglevel::Symbol = :Debug
     )
@@ -94,7 +109,7 @@ Only missing files will be downloaded. Already downloaded files will be skipped.
 To know the server structure and available data files for download, an `inventory.yaml`
 will be created in every product folder. The inventory is automatically appended, if new
 datas become available. An update of the whole inventory can be forced by setting the
-`force_update` flag to `true`. This can take several minutes, however.
+`resync` flag to `true`. This can take several minutes, however.
 
 A log file `downloads_<timestamp>.log` will be created in the `product` main folder,
 where the timestamp in the format `yyyy_mm_dd_HH_MM_SS` is added automatically to the
@@ -118,15 +133,13 @@ function sftp_download(
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
     format::UInt8 = 0x02,
-    force_update::Bool = false,
+    resync::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
 )::Nothing
     ## Setup
-    # Get connection to server, go to product folder on remote
-    product = @sprintf "%s.v%.2f" product version
-    icare = icare_connect(user, password, remoteroot, product)
     # Create product folder, if not existent
+    product = @sprintf "%s.v%.2f" product version
     productpath = set_localroot(localroot, product)
     # Convert integer dates to dates
     startdate, enddate = convertdates(startdate, enddate)
@@ -138,15 +151,17 @@ function sftp_download(
         Logging.with_logger(logger) do
             @info "downloading \"$product\" data to \"$productpath\""
         end
+        # Get connection to server, go to product folder on remote
+        icare = icare_connect(user, password, remoteroot, product, logger)
         # Get available server dates
         inventory, updated = product_database(
-            icare, remoteroot, localroot, product, daterange, force_update, logger
+            icare, localroot, product, daterange, resync, logger
         )
         # Log download session
         t0 = Dates.now()
         Logging.with_logger(logger) do
             formats = [".hdf", ".h5"]
-            not = force_update ? "" : " not"
+            not = resync ? "" : " not"
             @info "data files downloaded in $(formats[bits(format)[1:2]]) format"
             @info "files will$not be updated, if newer files are available on the server"
             @info "starting downloads @$(t0)"
@@ -165,8 +180,8 @@ function sftp_download(
                 mkpath(joinpath(productpath, datadir))
                 # remotefiles!(icare, inventory, datadir, date) # DEPRECATED (done during database sync)
                 # Change to ICARE folder and download files from server to local directory
-                cd(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) # DEPRECATE
-                updated |= download!(icare, inventory, datadir, date, format, force_update, logger, logio, counter) # TODO update
+                # cd(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) # DEPRECATE
+                updated |= download!(icare, inventory, datadir, date, format, resync, logger, logio, counter) # TODO update
             end #loop over dates/data files
         finally
             #* Log end of download session and save inventory
@@ -223,18 +238,44 @@ function icare_connect(
     user::String,
     password::String,
     root::String,
-    product::String
+    product::String,
+    logger::Logging.ConsoleLogger,
+    __counter__::Int=0
 )::SFTP.Client
     # Connect to server and go to root of selected data
+    wait = 60
     icare = SFTP.Client("sftp://sftp.icare.univ-lille.fr", user, password)
     try cd(icare, root)
     catch error
-        if error isa RequestError && error.code == 9
+        if error isa RequestError && error.code == 6
+            if __counter__ == 5
+                Logging.with_logger(logger) do
+                    @error "failed to connect to ICARE server; abort downloads"
+                end
+                throw(ConnectionError("failed to connect to ICARE server 5 times"))
+            else
+                __counter__ += 1
+                @warn "failed to connect to server; attempting again in $wait seconds"
+                # Wait a minute, then reconnect
+                sleep(wait)
+                icare_connect(user, password, root, product, logger, __counter__)
+                cd(icare, root) # ℹ Needed so that the icare uses the root path after recursive calls
+            end
+        elseif error isa RequestError && error.code == 9
+            Logging.with_logger(logger) do
+                @warn "remote root not verified"
+            end
             @warn "unable to verify remote root due to restricted access of parent folder" _module=nothing _file=nothing _line=nothing
             icare.uri = URI(icare.uri, path=root)
         elseif error isa RequestError && error.code == 67
+            Logging.with_logger(logger) do
+                @error "unable to connect to server; check user credentials"
+            end
             throw(Base.IOError("could not connect to ICARE server; check user name and password", 1))
         else
+            Logging.with_logger(logger) do
+                @error "unknown connection error when trying to connect to ICARE server"
+            end
             rethrow(error)
         end
     end
@@ -278,11 +319,10 @@ end
 """
     product_database(
         icare::SFTP.Client,
-        remoteroot::String,
-        localroot::String,
+        root::String,
         product::String,
         daterange::@NamedTuple{start::Date,stop::Date},
-        force_update::Bool,
+        resync::Bool,
         logger::Logging.ConsoleLogger
     ) -> OrderedDict, Bool
 
@@ -291,33 +331,32 @@ directory. Additonally, return a `Bool` indicating whether the inventory was upd
 Either read the database from the yaml file in the `product` folder or initialise
 a new empty database. If the `daterange` of the selected dates is (partly) outside the
 `inventory` date range, the `inventory` is updated for these extended periods.
-The whole inventory can be updated by setting `force_update` to `true`.
-Additional checks are performed, whether the `localroot` folder was moved. In that case, the
+The whole inventory can be updated by setting `resync` to `true`.
+Additional checks are performed, whether the `root` folder was moved. In that case, the
 inventory is updated and a warning is issued.
 Updates are logged to the screen and the log file with `logger`.
 """
 function product_database(
     icare::SFTP.Client,
-    remoteroot::String,
-    localroot::String,
+    root::String,
     product::String,
     daterange::@NamedTuple{start::Date,stop::Date},
-    force_update::Bool,
+    resync::Bool,
     logger::Logging.ConsoleLogger
 )::Tuple{OrderedDict,Bool}
     # Defining inventory source file and available years on server
     @info "Syncing inventory with ICARE server"
-    database = joinpath(localroot, product, "inventory.yaml")
+    database = joinpath(root, product, "inventory.yaml")
     years = parse.(Int, readdir(icare))
     if isfile(database)
         # Read available inventory
         inventory = load_inventory(database)
-        updated = check_localroot!(inventory, localroot, product)
+        updated = check_localroot!(inventory, root, product)
         # Update years of interest based on inventory and update options
-        filter_years!(inventory, years, daterange, force_update, logger)
+        filter_years!(inventory, years, daterange, resync, logger)
     else
         # Init empty inventory, if yaml is missing
-        inventory = new_inventory(remoteroot, localroot, product, logger)
+        inventory = new_inventory(icare, root, product, logger)
         updated = true
     end
     updated |= sync_database!(icare, inventory, years, daterange, logger)
@@ -356,8 +395,8 @@ end
 
 """
     new_inventory(
-        remoteroot::String,
-        localroot::String,
+        icare::SFTP.Client,
+        root::String,
         product::String,
         logger::Logging.ConsoleLogger
     ) -> OrderedDict{Union{Date,String},OrderedDict}
@@ -365,8 +404,8 @@ end
 Initialise a new and empty inventory.
 """
 function new_inventory(
-    remoteroot::String,
-    localroot::String,
+    icare::SFTP.Client,
+    root::String,
     product::String,
     logger::Logging.ConsoleLogger
 )::OrderedDict{Union{Date,String},OrderedDict}
@@ -379,12 +418,12 @@ function new_inventory(
             "file" => OrderedDict{String,Any}("count" => 0),
             "server" => OrderedDict{String,String}(
                 "product" => product,
-                "root" => remoteroot,
-                "productpath" => joinpath(remoteroot, product)
+                "root" => dirname(icare),
+                "productpath" => icare.uri.path
             ),
             "local" => OrderedDict{String,String}(
-                "root" => realpath(localroot),
-                "path" => realpath(joinpath(localroot, product))
+                "root" => realpath(root),
+                "path" => realpath(joinpath(root, product))
             ),
             "database" => OrderedDict{String,Any}(
                 "dates" => 0,
@@ -404,28 +443,28 @@ end
 """
     check_localroot!(
         inventory::OrderedDict,
-        localroot::AbstractString,
+        root::AbstractString,
         product::AbstractString
     ) -> Bool
 
-Check, if the `localroot` has changed and update the root path and the path to the
+Check, if the `root` has changed and update the root path and the path to the
 `product` main folder in the `inventory`.
 """
 function check_localroot!(
     inventory::OrderedDict,
-    localroot::AbstractString,
+    root::AbstractString,
     product::AbstractString
 )::Bool
     # Define paths and update status
     updated = false
-    localroot = realpath(localroot)
+    root = realpath(root)
     origin = inventory["metadata"]["local"]["root"]
     # Correct and log differences between current paths and inventory paths
-    if localroot ≠ origin
+    if root ≠ origin
         origin = joinpath(origin, product)
-        update = joinpath(localroot, product)
+        update = joinpath(root, product)
         @warn "product folder was recently moved; updating inventory" origin update
-        inventory["metadata"]["local"]["root"] = localroot
+        inventory["metadata"]["local"]["root"] = root
         inventory["metadata"]["local"]["path"] = update
         updated = true
     end
@@ -438,22 +477,22 @@ end
         inventory::OrderedDict,
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
-        force_update::Bool,
+        resync::Bool,
         logger::Logging.ConsoleLogger
     )
 
 Filter `years` to keep only years within the `daterange` and outside th known date range of
-the `inventory` unless `force_update` is set to `true`. In this case, empty dates and reset
+the `inventory` unless `resync` is set to `true`. In this case, empty dates and reset
 metadata. Log events to `logger`.
 """
 function filter_years!(
     inventory::OrderedDict,
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
-    force_update::Bool,
+    resync::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
-    if !force_update
+    if !resync
         # Default option: update outside known date range
         Logging.with_logger(logger) do
             @info "Checking for new data not yet considered in the inventory"
@@ -508,7 +547,7 @@ function sync_database!(
     @info "Syncing database with ICARE server and identifying files to download"
     for year in years
         # Save new years to inventory and sync dates with server
-        folders = readdir(icare, joinpath(server["root"], server["product"], string(year)))
+        folders = readdir(icare, string(year))
         dates = Date.(folders, "yyyy_mm_dd")
         isempty(dates) && continue
         #* Loop over dates in the current year and add missing dates to inventory
@@ -632,8 +671,7 @@ function remotefiles!(
     date in inventory["metadata"]["database"]["gaps"] && return false
     isempty(inventory["dates"][date]) || return false
     # Get stats of remote files (without the current and parent folders)
-    datadir = joinpath(icare.uri, Dates.format(date, "yyyy/yyyy_mm_dd"))
-    stats = SFTP.statscan(icare, datadir.path)
+    stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
     files = [splitext(s.desc)[1] for s in stats]
     filesize = [s.size for s in stats]
     mtime = [s.mtime for s in stats]
@@ -716,13 +754,13 @@ function download!(
         pulled = false
         updated = false
         #* Loop over files
-        pm.@showprogress dt=1 desc="$date:" for file in keys(files)
+        pm.@showprogress dt=1 desc="$date:" for file in files.keys
             datafile = joinpath(datapath, file)
             t0 = Dates.now()
             # Set flag for presence of hdf file
             h4 = isfile(datafile*".hdf") # Update: Generalize file extension (user choice with default)
             # Check download status (no directory needed, already in product directory)
-            if downloaded(datafile, inventory["dates"][date][file], format, update)
+            if downloaded(datafile, files[file], format, update)
                 pulled = true
                 Logging.with_logger(logger) do
                     @debug "$file already downloaded, skipping download" _module=nothing _file=nothing _line=nothing
@@ -814,10 +852,10 @@ function downloaded(
     # Get files in local director and verify HDF version
     hdf_version = bits(format)
     # Check hdf files for existance, size and modified date
-    h4 = hdf_version[1] ? file_pulled( ".hdf", targetfile, filestats, update) : true
-    h5 = hdf_version[2] ? file_pulled( ".h5", targetfile, filestats, update) : true
+    ext = hdf_version[1] ? file_pulled( ".hdf", targetfile, filestats, update) : true
+    newext = hdf_version[2] ? file_pulled( ".h5", targetfile, filestats, update) : true
     # Return true if all checks passed
-    return h4 & h5
+    return ext & newext
 end
 
 
