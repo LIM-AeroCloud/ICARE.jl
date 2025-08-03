@@ -14,7 +14,6 @@ import Bits: bits
 import ProgressMeter as pm
 import Dates
 import Dates: Date, DateTime
-import Printf: @sprintf
 import YAML
 import Logging
 import OrderedCollections: OrderedDict

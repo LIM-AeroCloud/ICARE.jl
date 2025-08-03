@@ -50,7 +50,7 @@ Counter(;downloads::Int=0, conversions::Int=0, skipped::Int=0)::Counter = Counte
         product::String,
         startdate::Int,
         enddate::Int=-1;
-        version::Float64 = 4.51,
+        version::String = 4.51,
         remoteroot::String = "/SPACEBORNE/CALIOP/",
         localroot::String = ".",
         format::UInt8 = 0x02,
@@ -75,7 +75,8 @@ other formats with the `remoteext` keyword argument.
 
 In addition to the root, the desired `product` is needed as third positional argument,
 e.g. `05kmCPro` or `01kmALay`. The name must match the name in the folder excluding
-the version number, which is passed as float with the `version` keyword argument (default = `4.51`).
+the version number, which is passed as string for maximum flexibility with the `version`
+keyword argument (default = `"4.51"`).
 
 Finally, the desired date range can be specified with the fourth and optional fifth
 positional argument. Dates are passed as integer values in the format `yyyymmdd`.
@@ -129,17 +130,17 @@ function sftp_download(
     product::String,
     startdate::Int,
     enddate::Int=-1;
-    version::Float64 = 4.51,
+    version::String = "4.51",
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
-    format::UInt8 = 0x02,
+    converter::Union{Nothing,String} = "",
     resync::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
 )::Nothing
     ## Setup
     # Create product folder, if not existent
-    product = @sprintf "%s.v%.2f" product version
+    product = product*".v"*version
     productpath = set_localroot(localroot, product)
     # Convert integer dates to dates
     startdate, enddate = convertdates(startdate, enddate)
@@ -151,12 +152,21 @@ function sftp_download(
         Logging.with_logger(logger) do
             @info "downloading \"$product\" data to \"$productpath\""
         end
+        #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
+        ts = Dates.now()
+        Logging.with_logger(logger) do
+            @info "Initialising databse @$ts"
+        end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # Get available server dates
-        inventory, updated = product_database(
+        inventory = product_database(
             icare, localroot, product, daterange, resync, logger
         )
+        Logging.with_logger(logger) do
+            te = Dates.now()
+            @info "Setup of database completed in $(te - ts)) @$te"
+        end
         # Log download session
         t0 = Dates.now()
         Logging.with_logger(logger) do
@@ -176,18 +186,19 @@ function sftp_download(
             dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
             for date in dates
                 # Match folder structure with server
-                datadir = joinpath(string(Dates.year(date)), Dates.format(date, "yyyy_mm_dd"))
-                mkpath(joinpath(productpath, datadir))
+                # // datadir = joinpath(string(Dates.year(date)), Dates.format(date, "yyyy_mm_dd"))
+                # // mkpath(joinpath(productpath, datadir))
                 # remotefiles!(icare, inventory, datadir, date) # DEPRECATED (done during database sync)
                 # Change to ICARE folder and download files from server to local directory
                 # cd(icare, joinpath(inventory["metadata"]["server"]["productpath"], datadir)) # DEPRECATE
-                updated |= download!(icare, inventory, datadir, date, format, resync, logger, logio, counter) # TODO update
+                download!(icare, inventory, datadir, date, format, resync, logger, logio, counter) # TODO update
             end #loop over dates/data files
         finally
             #* Log end of download session and save inventory
-            updated && save_inventory(inventory)
-            t1 = Dates.now()
-            log_counter(counter, logger, t0, t1)
+            if inventory["metadata"]["updated"] > ts
+                save_inventory(inventory)
+            end
+            log_counter(counter, logger, t0)
         end
     end #logging to file
 end #function ftp_download
@@ -195,12 +206,13 @@ end #function ftp_download
 
 
 """
-    log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime, t1::DateTime)
+    log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime)
 
 Log the number of downloaded, skipped, and converted files saved in `counter` to `logger`
-together with the time it took calculated from `t1 - t0`.
+together with the time it took since `t0`.
 """
-function log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime, t1::DateTime)::Nothing
+function log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime)::Nothing
+    t1 = Dates.now()
     Logging.with_logger(logger) do
         if counter.downloads > 0
             s = counter.downloads == 1 ? "" : "s"
@@ -324,11 +336,10 @@ end
         daterange::@NamedTuple{start::Date,stop::Date},
         resync::Bool,
         logger::Logging.ConsoleLogger
-    ) -> OrderedDict, Bool
+    ) -> OrderedDict
 
 Return the inventory of `icare` server-side data files for the `product` in the `remoteroot`
-directory. Additonally, return a `Bool` indicating whether the inventory was updated.
-Either read the database from the yaml file in the `product` folder or initialise
+directory. Either read the database from the yaml file in the `product` folder or initialise
 a new empty database. If the `daterange` of the selected dates is (partly) outside the
 `inventory` date range, the `inventory` is updated for these extended periods.
 The whole inventory can be updated by setting `resync` to `true`.
@@ -343,7 +354,7 @@ function product_database(
     daterange::@NamedTuple{start::Date,stop::Date},
     resync::Bool,
     logger::Logging.ConsoleLogger
-)::Tuple{OrderedDict,Bool}
+)::OrderedDict
     # Defining inventory source file and available years on server
     @info "Syncing inventory with ICARE server"
     database = joinpath(root, product, "inventory.yaml")
@@ -351,16 +362,15 @@ function product_database(
     if isfile(database)
         # Read available inventory
         inventory = load_inventory(database)
-        updated = check_localroot!(inventory, root, product)
+        check_localroot!(inventory, root, product)
         # Update years of interest based on inventory and update options
         filter_years!(inventory, years, daterange, resync, logger)
     else
         # Init empty inventory, if yaml is missing
         inventory = new_inventory(icare, root, product, logger)
-        updated = true
     end
-    updated |= sync_database!(icare, inventory, years, daterange, logger)
-    return inventory, updated
+    sync_database!(icare, inventory, years, daterange, logger)
+    return inventory
 end
 
 
@@ -445,7 +455,7 @@ end
         inventory::OrderedDict,
         root::AbstractString,
         product::AbstractString
-    ) -> Bool
+    )
 
 Check, if the `root` has changed and update the root path and the path to the
 `product` main folder in the `inventory`.
@@ -454,9 +464,8 @@ function check_localroot!(
     inventory::OrderedDict,
     root::AbstractString,
     product::AbstractString
-)::Bool
+)::Nothing
     # Define paths and update status
-    updated = false
     root = realpath(root)
     origin = inventory["metadata"]["local"]["root"]
     # Correct and log differences between current paths and inventory paths
@@ -466,9 +475,9 @@ function check_localroot!(
         @warn "product folder was recently moved; updating inventory" origin update
         inventory["metadata"]["local"]["root"] = root
         inventory["metadata"]["local"]["path"] = update
-        updated = true
+        inventory["metadata"]["updated"] = Dates.now()
     end
-    return updated
+    return
 end
 
 
@@ -526,7 +535,7 @@ end
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
         logger::Logging.ConsoleLogger
-    ) -> Bool
+    )
 
 Sync the `inventory` with the `icare` server for the given `years`.
 Return a `Bool`, whether updates in the `inventory` occured. Log events to `logger`.
@@ -537,12 +546,11 @@ function sync_database!(
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
     logger::Logging.ConsoleLogger
-)::Bool
+)
     # Monitor updates
     updated = false
     # Define views on metadata and save current date range
     database = inventory["metadata"]["database"]
-    server = inventory["metadata"]["server"]
     #* Loop over dates in online database
     @info "Syncing database with ICARE server and identifying files to download"
     for year in years
@@ -555,6 +563,8 @@ function sync_database!(
             updated |= new_date!(inventory, date)
             updated |= remotefiles!(icare, inventory, date)
         end
+        # Ensure complete years get saved in the local inventory, if something during database setups happens
+        updated && (inventory["metadata"]["updated"] = Dates.now())
     end
     # Save data gaps to inventory
     data_gaps!(inventory)
@@ -562,8 +572,9 @@ function sync_database!(
 
     updated && Logging.with_logger(logger) do
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
+        inventory["metadata"]["updated"] = Dates.now()
     end
-    return updated
+    return
 end
 
 
@@ -831,34 +842,124 @@ end
 
 
 """
-    downloaded(
-        targetfile::String,
-        filestats::OrderedDict,
-        format::UInt8,
-        update::Bool
+    downloaded!(
+        inventory::OrderedDict,
+        dbfile::@NamedTuple{name::String,target::String,original::String,remote::String,ext::String},
+        date::Date,
+        update::Bool,
+        orig::Bool=false
     ) -> Bool
 
-Check, whether the `targetfile` has already been downloaded from the server
-to the local directory in the specified `format` by compoaring it to the `filestats`
-of the remote server. If `updated` is set, downloaded returns `false`, if newer versions
-of the `targetfile` exist on the server.
+Check, whether the `dbfile.target` for the given `date` has already been downloaded from the server
+to the local directory by comparing it to the `filestats` of the remote server in the `inventory`.
+If `update` is set, downloaded returns `false`, if newer versions of the `dbfile` exist on the
+server.
+When `orig` is set to `true`, downloaded checks against the original instead of the target file.
+
+The `h5size` may be added to the `inventory`, if previously missing.
 """
-function downloaded(
-    targetfile::String,
-    filestats::OrderedDict,
-    format::UInt8,
-    update::Bool
+function downloaded!(
+    inventory::OrderedDict,
+    dbfile::@NamedTuple{name::String,target::String,original::String,remote::String,ext::String},
+    date::Date,
+    update::Bool,
+    orig::Bool=false
 )::Bool
-    # Get files in local director and verify HDF version
-    hdf_version = bits(format)
-    # Check hdf files for existance, size and modified date
-    ext = hdf_version[1] ? file_pulled( ".hdf", targetfile, filestats, update) : true
-    newext = hdf_version[2] ? file_pulled( ".h5", targetfile, filestats, update) : true
-    # Return true if all checks passed
-    return ext & newext
+    filestats = inventory["dates"][date][dbfile.name]
+    # Check, if file exists
+    file = isfile(dbfile.target) ? dbfile.target : dbfile.original
+    orig && (file = dbfile.original) # ℹ Check for the original file from the server, not the converted
+    isfile(file) || return false
+    # Get file stats and type
+    localstats = stat(file)
+    h5 = splitext(file)[2] == ".h5" && file ≠ dbfile.original
+    size = if h5 #* h5 converted files
+        # Compare h5 file size, if available in inventory
+        # Otherwise, compare size of original file format
+        h5key = haskey(filestats, "h5size")
+        s = if h5key
+            "h5size"
+        else
+            localstats = stat(dbfile.original)
+            "size"
+        end
+        ok = localstats.size == filestats[s]
+        # Update file size in inventory or return false for wrong file size
+        if ok && !h5key
+            # Update file stats for h5 files
+            filestats["h5size"] = filesize(file)
+            inventory["metadata"]["updated"] = Dates.now()
+        end
+        ok
+    else #* original file from server
+        localstats.size == filestats["size"]
+    end
+    # Compare stats
+    size || return false
+    (update && localstats.mtime > filestats["mtime"]) && return false
+    # Return true, if all checks passed
+    return true
 end
 
 
+"""
+    database_files(
+        icare::SFTP.Client,
+        inventory::OrderedDict,
+        date::Date,
+        name::String,
+        converter::String
+    ) -> @NamedTuple{name::String,target::String,original::String,remote::String,ext::String}
+
+Create a named tuple with the file paths for the target, original (local), and remote files
+as well as the file `name` and the extension from the data of the `inventory`, the `icare` client,
+the given `date`, the `name` of the file, and the path to the `converter` script.
+"""
+function database_files(
+    icare::SFTP.Client,
+    inventory::OrderedDict,
+    date::Date,
+    name::String,
+    converter::String,xyhjm
+)::@NamedTuple{name::String,target::String,original::String,remote::String,ext::String}
+    datadir = Dates.format.(date, ["yyyy", "yyyy_mm_dd"])
+    datapath = mkpath(joinpath(inventory["metadata"]["local"]["path"], datadir...))
+    ext = inventory["metadata"]["file"]["ext"]
+    original = joinpath(datapath, name*ext)
+    target = isempty(converter) ? original : splitext(original)[1]*".h5"
+    remote = joinpath(icare.uri, datadir..., name*ext).path
+    return (;name, target, original, remote, ext)
+end
+
+
+"""
+    converted(data::OrderedDict, file::String) -> Bool
+
+Check, whether the size of the converted `file` is known in the `data` directory.
+"""
+converted(data::OrderedDict, file::String)::Bool = haskey(data[file], "h5size")
+
+
+"""
+    converterpath(converter::Union{Nothing,String}) -> String
+
+Return the path to the converter script for HDF4 to HDF5 conversion.
+If `converter` is `nothing`, return an empty string.
+If `converter` is an empty string, return the default path to the converter script.
+If `converter` is a string, return it or throw an error for invalid paths.
+"""
+function converterpath(converter::Union{Nothing,String})::String
+    if isnothing(converter)
+        ""
+    elseif isempty(converter)
+        realpath(joinpath(@__DIR__, "..", "data", "h4toh5.jl"))
+    else
+        realpath(converter)
+    end
+end
+
+
+#=
 """
     file_pulled(
         ext::String,
@@ -889,3 +990,4 @@ function file_pulled(
     (update && localstats.mtime > filestats["mtime"]) && return false
     return true
 end
+ =#

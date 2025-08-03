@@ -1,14 +1,13 @@
 name = "ICARE"
 uuid = "d4da717d-1138-44a6-9758-4f5a9640abeb"
-version = "0.5.0-DEV"
 authors = ["Peter Bräuer <pb866.git@gmail.com>"]
+version = "0.5.0-DEV"
 
 [deps]
 Bits = "1654ce90-6ed3-553a-957f-9452c3a40996"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
@@ -21,7 +20,6 @@ Bits = "0.2"
 Dates = "1.11"
 Logging = "1.11"
 OrderedCollections = "1.8"
-Printf = "1.11"
 ProgressMeter = "1.10"
 SFTP = "0.2.0"
 YAML = "0.4.14"
