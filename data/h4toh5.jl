@@ -1,3 +1,8 @@
+"""
+    convert(file::String)
+
+Convert the `file` from HDF4 or NetCDF to HDF5 format.
+"""
 function convert(file::String)::Nothing
     # Return, if file doesn't exist
     isfile(file) || return

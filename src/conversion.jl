@@ -36,7 +36,7 @@ overwritten.
 """
 function hdfupgrade(
     product::String,
-    version::Float64 = 4.51;
+    version::Union{Nothing,Float64} = 4.51;
     localroot::String = ".",
     remoteroot::String = "/SPACEBORNE/CALIOP",
     user::String = "",
@@ -48,7 +48,7 @@ function hdfupgrade(
     loglevel::Symbol = :Debug
 )::Nothing
     # Define product folder and path
-    product = @sprintf "%s.v%.2f" product version
+    product = isnothing(version) ? product : @sprintf("%s.v%.2f", product, version)
     productpath = realpath(joinpath(localroot, product))
     start = length(productpath) + 2 # start index of remaining path (+1 for `\`, +1 for next char in string)
     # Start logging
