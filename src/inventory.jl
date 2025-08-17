@@ -4,7 +4,7 @@
 """
     product_database!(
         icare::SFTP.Client,
-        inventory::OrderedDict{String,OrderedDict},
+        inventory::OrderedDict,
         root::String,
         product::String,
         daterange::@NamedTuple{start::Date,stop::Date},
@@ -23,7 +23,7 @@ Updates are logged to the screen and the log file with `logger`.
 """
 function product_database!(
     icare::SFTP.Client,
-    inventory::OrderedDict{String,OrderedDict},
+    inventory::OrderedDict,
     root::String,
     product::String,
     daterange::@NamedTuple{start::Date,stop::Date},
@@ -48,11 +48,11 @@ end
 
 
 """
-    load_inventory!(inventory::OrderedDict{String,OrderedDict}, file::AbstractString)
+    load_inventory!(inventory::OrderedDict, file::AbstractString)
 
 Load data from a yaml `file` to the `inventory`.
 """
-function load_inventory!(inventory::OrderedDict{String,OrderedDict}, file::AbstractString)::Nothing
+function load_inventory!(inventory::OrderedDict, file::AbstractString)::Nothing
     @info "loading local inventory"
     for (key, value) in YAML.load_file(file, dicttype=OrderedDict)
         inventory[key] = value
@@ -63,7 +63,7 @@ end
 """
     new_inventory!(
         icare::SFTP.Client,
-        inventory::OrderedDict{String,OrderedDict},
+        inventory::OrderedDict,
         root::String,
         product::String,
         logger::Logging.ConsoleLogger
@@ -73,7 +73,7 @@ Initialise a new and empty inventory.
 """
 function new_inventory!(
     icare::SFTP.Client,
-    inventory::OrderedDict{String,OrderedDict},
+    inventory::OrderedDict,
     root::String,
     product::String,
     logger::Logging.ConsoleLogger
@@ -82,7 +82,7 @@ function new_inventory!(
     Logging.with_logger(logger) do
         @info "initialising new, empty inventory"
     end
-    inventory["metadata"] = OrderedDict{String,OrderedDict}(
+    inventory["metadata"] = OrderedDict{String,Any}(
         "file" => OrderedDict{String,Any}("count" => 0),
         "server" => OrderedDict{String,String}(
             "product" => product,
@@ -99,11 +99,11 @@ function new_inventory!(
             "start" => Date(9999),
             "stop" => Date(0),
             "created" => Dates.now(),
-            "updated" => Dates.now(),
-            "gaps" => Vector{Date}()
+            "updated" => Dates.now()
         )
     )
     inventory["dates"] = OrderedDict{Date,OrderedDict}()
+    inventory["gaps"] = Vector{Date}()
     return
 end
 
@@ -144,7 +144,7 @@ function filter_years!(
             @info "Checking inventory dates for updates"
         end
         clear_dates!(inventory)
-        empty!(inventory["metadata"]["database"]["gaps"])
+        empty!(inventory["gaps"])
         inventory["metadata"]["file"]["count"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
@@ -227,7 +227,7 @@ function remotefiles!(
     date::Date
 )::Bool
     # Entry checks
-    date in inventory["metadata"]["database"]["gaps"] && return false
+    date in inventory["gaps"] && return false
     isempty(inventory["dates"][date]) || return false
     # Get stats of remote files (without the current and parent folders)
     stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
@@ -345,8 +345,8 @@ function data_gaps!(inventory::OrderedDict)::Nothing
     # Determine data gaps in the date range
     db = inventory["metadata"]["database"]
     new_gaps = setdiff(db["start"]:db["stop"], inventory["dates"].keys)
-    union!(db["gaps"], new_gaps) |> sort!
-    db["missing"] = length(db["gaps"])
+    union!(inventory["gaps"], new_gaps) |> sort!
+    db["missing"] = length(inventory["gaps"])
     return
 end
 
@@ -368,7 +368,7 @@ function display_gaps(
 )::Nothing
     #* Get gaps in current date range
     database = inventory["metadata"]["database"]
-    current_gaps = database["gaps"] |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
+    current_gaps = inventory["gaps"] |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
     isempty(current_gaps) && return
     #* Combine dates to ranges
     current_range = [current_gaps[1]]
@@ -408,7 +408,7 @@ end
 ##  Functions for resetting or saving the inventory
 
 """
-    clear_dates!(inventory::OrderedDict{String,OrderedDict})
+    clear_dates!(inventory::OrderedDict)
 
 Clear all data for dates in the `inventory`, but save the converted file sizes in a temp entry.
 """

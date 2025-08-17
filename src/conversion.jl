@@ -67,7 +67,7 @@ function hdfupgrade(
         for (path, dirs, files) in collect(walkdir(productpath))
             # Check folder structure
             path = path[start:end]
-            valid_dir(path, inventory["metadata"], logger) || continue
+            valid_dir(path, inventory, logger) || continue
             # Get h4/h5 files in current folder
             h4files = getindex.(splitext.(filter(endswith(h4ext), files)), 1)
             h5files = getindex.(splitext.(filter(endswith(h5ext), files)), 1)
@@ -275,17 +275,17 @@ end
 """
     valid_dir(
         path::String,
-        metadata::OrderedDict,
+        inventory::OrderedDict,
         logger::Logging.ConsoleLogger
     ) -> Bool
 
 Check that the `path` is a valid directory within the ICARE folder structure.
 Return `true`, if the folder meets the ICARE standard, `false` otherwise.
-Log events to `logger` (using `metadata` if needed).
+Log events to `logger` (using `inventory` data if needed).
 """
 function valid_dir(
     path::String,
-    metadata::OrderedDict,
+    inventory::OrderedDict,
     logger::Logging.ConsoleLogger
 )::Bool
     # Analyse curent path
@@ -299,14 +299,17 @@ function valid_dir(
         return false
     end
     # Check date is in expected range
-    ok &= if date in metadata["database"]["gaps"]
+    ok &= if date in inventory["gaps"]
         Logging.with_logger(logger) do
-            @warn "no data reported for $date in inventory; skipping all conversions for this date" _module=nothing _file=nothing _line=nothing
+            @warn("no data reported for $date in inventory; skipping all conversions for this date",
+                _module=nothing, _file=nothing, _line=nothing)
         end
         false
-    elseif date < metadata["database"]["start"] || date > metadata["database"]["stop"]
+    elseif date < inventory["metadata"]["database"]["start"] || date > inventory["metadata"]["database"]["stop"]
         Logging.with_logger(logger) do
-            @warn "date $date outside expected range $(metadata["database"]["start"]) – $(metadata["database"]["stop"]); skipping all conversions for this date" _module=nothing _file=nothing _line=nothing
+            @warn("date $date outside expected range $(inventory["metadata"]["database"]["start"]) – "*
+                "$(inventory["metadata"]["database"]["stop"]); skipping all conversions for this date",
+                _module=nothing, _file=nothing, _line=nothing)
         end
         false
     else
@@ -384,7 +387,7 @@ function in_database(
             end
         end
     # issue: The following errors should not occur (and be caught elsewhere)
-    elseif d in inventory["metadata"]["database"]["gaps"]
+    elseif d in inventory["gaps"]
         return 5 # ℹ EC5: no data reported for date
     elseif d < inventory["metadata"]["database"]["start"] || d > inventory["metadata"]["database"]["stop"]
         return 6 # ℹ EC6: date outside expected date range

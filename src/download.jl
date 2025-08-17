@@ -112,7 +112,7 @@ function sftp_download(
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block
-        inventory = OrderedDict{String,OrderedDict}()
+        inventory = OrderedDict{String,Any}()
         # Get available server dates
         try
             product_database!(icare, inventory, localroot, product, daterange, resync, logger)
@@ -142,6 +142,7 @@ function sftp_download(
         counter = Counter()
         try
             # Loop over available dates
+            converter = converterpath(converter)
             dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
             for date in dates
                 # Match folder structure with server
@@ -284,7 +285,7 @@ end
 """
     sync!(
         icare::SFTP.Client,
-        inventory::OrderedDict{String,OrderedDict},
+        inventory::OrderedDict,
         date::Date,
         converter::String,
         update::Bool,
@@ -304,7 +305,7 @@ in the `logio` I/O stream.
 
 function sync!(
     icare::SFTP.Client,
-    inventory::OrderedDict{String,OrderedDict},
+    inventory::OrderedDict,
     date::Date,
     converter::String,
     update::Bool,
@@ -316,7 +317,6 @@ function sync!(
     # TODO implement parallel downloads
     files = inventory["dates"][date]
     checked_dates = Vector{Date}()
-    converter = converterpath(converter)
     pm.@showprogress dt=1 desc="$date:" for file in files.keys
         #* Define current file locations
         dbfile = File(icare, inventory, date, file, converter)
