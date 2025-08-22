@@ -131,7 +131,7 @@ function sftp_download(
         t0 = Dates.now()
         Logging.with_logger(logger) do
             not = resync ? "" : " not"
-            @info "starting downloads @$(t0)"
+            @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
             @info "files will$not be updated, if newer files are available on the server"
             flush(logio)
         end
@@ -139,6 +139,8 @@ function sftp_download(
         ## Download
         #* Download missing data from server
         @info "downloading data from ICARE server"
+        @info("up to $(Threads.nthreads()) parallel downloads available\n"*
+            "start julia with `julia -t <number>` to change `<number>` of parallel downloads")
         counter = Counter()
         # Match folder structure with server
         try sync!(icare, inventory, daterange, converter, update, resync, logger, logio, counter)
@@ -206,7 +208,7 @@ function icare_connect(
             Logging.with_logger(logger) do
                 @error "unable to connect to server; check user credentials"
             end
-            throw(Base.IOError("could not connect to ICARE server; check user name and password", 1))
+            throw(Base.IOError("could not connect to ICARE server; check user name and password", Integer(SFTP.EC_DIR_NOT_FOUND)))
         else
             Logging.with_logger(logger) do
                 @error "unknown connection error when trying to connect to ICARE server"
@@ -300,29 +302,39 @@ function sync!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     daterange::@NamedTuple{start::Date, stop::Date},
-    converter::String,
+    converter::Union{Nothing,String},
     update::Bool,
     resync::Bool,
     logger::Logging.ConsoleLogger,
     logio::IO,
     counter::Counter
 )::Nothing
-    # TODO implement parallel downloads
     #* Define all files for download
     converter = converterpath(converter)
     dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
     files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, converter)
         for date in dates]...)
+    Logging.with_logger(logger) do
+        if isempty(converter)
+            @info "no file conversion after download"
+        else
+            @info "file conversion to new format for all downloads" converter
+        end
+    end
 
-    checked_dates = Vector{Date}() # ℹ to avoid slow connections to the server
-    pm.@showprogress dt=5 desc="downloading..." for file in files
+    prog = pm.Progress(length(files), desc="downloading...")
+    @threads for file in files
         #* Check for previous downloads
         if downloaded(inventory, file, update)
-            Logging.with_logger(logger) do
-                @debug "skipping $(file.name), already downloaded" _module=nothing _file=nothing _line=nothing
+            lock(thread) do
+                #* Log skipped files
+                Logging.with_logger(logger) do
+                    @debug "skipping $(file.name), already downloaded" _module=nothing _file=nothing _line=nothing
+                end
+                counter.skipped += 1
                 flush(logio)
             end
-            counter.skipped += 1
+            pm.next!(prog)
             continue
         end
         t0 = Dates.now()
@@ -332,50 +344,72 @@ function sync!(
             download(icare, inventory, file, update)
             convert!(inventory, file, converter, logger)
         catch error
-            Logging.with_logger(logger) do
-                @error "Failed to download $(file.name); attempting again" error
+            lock(thread) do
+                #* Log download errors
+                Logging.with_logger(logger) do
+                    @error "failed to download $(file.name)" error _module=nothing _file=nothing _line=nothing
+                end
             end
         end
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
-                inventory["metadata"]["server"]["product"], logger)
+            lock(thread) do
+                icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
+                    inventory["metadata"]["server"]["product"], logger)
+            end
             # Check for correct server-side file stats
-            update_stats!(icare, inventory, file, checked_dates, resync, logger)
+            update_stats!(icare, inventory, file, resync, logger)
             try
                 download(icare, inventory, file, update)
                 convert!(inventory, file, converter, logger)
             catch error
-                Logging.with_logger(logger) do
-                    @error("Second download attempt failed for $(file.name); no further attempts",
-                        error, _module=nothing, _file=nothing, _line=nothing)
+                lock(thread) do
+                    #* Log second download attempt errors
+                    Logging.with_logger(logger) do
+                        @error("Second download attempt failed for $(file.name); no further attempts",
+                            error, _module=nothing, _file=nothing, _line=nothing)
+                    end
                 end
+                lock(thread) do
+                    counter.failed += 1
+                end
+                throw(@error("Second download attempt failed for $(file.name); no further attempts",
+                    error, _module=nothing, _file=nothing, _line=nothing))
             end
         end
         #* Clean-up
         if downloaded(inventory, file, update)
+            # Remove original downloads unless no conversion is selected or original file already existed
             orig &= filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
-            orig || rm(file.location.download, force=true)
+            isempty(converter) || orig || rm(file.location.download, force=true)
+            # Log download success
             t1 = Dates.now()
             if orig
-                counter.conversions += 1
-                Logging.with_logger(logger) do
-                    @debug("$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1",
-                        _module=nothing, _file=nothing, _line=nothing)
+                lock(thread) do
+                    counter.conversions += 1
+                    Logging.with_logger(logger) do
+                        @debug("$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1",
+                            _module=nothing, _file=nothing, _line=nothing)
+                    end
                 end
             else
-                counter.downloads += 1
-                Logging.with_logger(logger) do
-                    @debug("downloaded $(file.name) in $(Dates.canonicalize(t1 - t0)) @$t1",
-                        _module=nothing, _file=nothing, _line=nothing)
+                lock(thread) do
+                    # Log successful downloads
+                    counter.downloads += 1
+                    Logging.with_logger(logger) do
+                        @debug("downloaded $(file.name) in $(Dates.canonicalize(t1 - t0)) @$t1",
+                            _module=nothing, _file=nothing, _line=nothing)
+                    end
                 end
             end
-        else
-            counter.failed += 1
         end
-        flush(logio)
+        lock(thread) do
+            flush(logio)
+        end
+        pm.next!(prog) # Update progress meter
     end # loop over files
+    pm.finish!(prog)
 end
 
 
@@ -459,7 +493,7 @@ function convert!(
     converter::String,
     logger::Logging.ConsoleLogger
 )::Nothing
-    converted!(inventory, file) && return
+    converted!(inventory, file, converter) && return
     rm(file.location.target, force=true)
     run(`julia $converter $(file.location.download)`)
     set_converted_size!(inventory, file, logger)
@@ -467,17 +501,17 @@ end
 
 
 """
-    converted!(inventory::OrderedDict, file::File) -> Bool
+    converted!(inventory::OrderedDict, file::File, converter::String) -> Bool
 
 Check, whether the size of the converted `file` is known in the `data` dictionary and matches the
-actual file size.
+actual file size. Return also `true`, if no `converter` is selected.
 """
-function converted!(inventory::OrderedDict, file::File)::Bool
+function converted!(inventory::OrderedDict, file::File, converter::String)::Bool
     if haskey(inventory["dates"][file.date][file.name], "converted")
         # Compare file size with inventory
         inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
     else
-        return false
+        return isempty(converter)
     end
 end
 
@@ -500,14 +534,20 @@ function set_converted_size!(
     # Initial checks
     haskey(inventory["dates"][file.date][file.name], "converted") && return
     if !isfile(file.location.target)
-        Logging.with_logger(logger) do
-            @error "cannot determine size of '$(file.location.target)'" _module=nothing _file=nothing _line=nothing
+        lock(thread) do
+            # Log error, if converted file does not exist
+            Logging.with_logger(logger) do
+                @error("cannot determine size of '$(file.location.target)'",
+                    _module=nothing, _file=nothing, _line=nothing)
+            end
         end
         return
     end
     # Save converted file size to inventory
-    inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
-    inventory["metadata"]["database"]["updated"] = Dates.now()
+    lock(thread) do
+        inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
+        inventory["metadata"]["database"]["updated"] = Dates.now()
+    end
     return
 end
 

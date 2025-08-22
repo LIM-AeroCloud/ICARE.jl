@@ -17,6 +17,10 @@ import YAML
 import Logging
 import OrderedCollections: OrderedDict
 import Printf: @sprintf
+import Base.Threads: @threads
+
+# global thread lock
+const thread = ReentrantLock()
 
 # Export functions
 export sftp_download, hdfupgrade

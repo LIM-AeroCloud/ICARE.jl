@@ -268,14 +268,13 @@ end
         icare::SFTP.Client,
         inventory::OrderedDict,
         file::File,
-        checked_dates::Vector{Date},
         resync::Bool,
         logger::Logging.ConsoleLogger
     )
 
 Update the `file` stats in the `inventory` with the remote `icare` server.
 If the size of the converted file does not match the `inventory`, it is updated, too.
-Ignore already `checked_dates` or if the `inventory` was already `resync`ed.
+Ignore already checked dates, if the `inventory` was already `resync`ed.
 Reset data for files previously in the database, but currently not available on the server.
 Log events to `logger`.
 """
@@ -283,20 +282,26 @@ function update_stats!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     file::File,
-    checked_dates::Vector{Date},
     resync::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
     # Skip, if already updated at the beginning
-    (resync || file.date in checked_dates) && return
+    resync && return
     # Get stats of all files for the given date
     stats = SFTP.statscan(icare, file.dir.src)
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
     obsolete = setdiff(inventory["dates"][file.date].keys, names)
-    for file in obsolete
-        inventory["dates"][file.date][file]["size"] = 0
-        delete!(inventory["dates"][file.date][file], "converted")
+    lock(thread) do
+        for file in obsolete
+            inventory["dates"][file.date][file]["size"] = 0
+            delete!(inventory["dates"][file.date][file], "converted")
+        end
+        if !isempty(obsolete)
+            Logging.with_logger(logger) do
+                @warn "resetting file stats for date $(file.date)" obsolete
+            end
+        end
     end
     # Sort files by names (equals to time)
     sortorder = sortperm(names)
@@ -308,24 +313,29 @@ function update_stats!(
         dbfile = inventory["dates"][file.date][names[i]]
         if stats[i].size == dbfile["size"] &&
             (Date∘Dates.unix2datetime)(stats[i].mtime) == dbfile["mtime"]
-            updated = true
-            inventory["dates"][file.date][names[i]] = OrderedDict(
-                "size" => stats[i].size,
-                "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
-            )
+            lock(thread) do
+                updated = true
+                inventory["dates"][file.date][names[i]] = OrderedDict(
+                    "size" => stats[i].size,
+                    "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
+                )
+            end
         end
         # Compare h5 size with current conversion
         if isfile(file.location.target) && haskey(dbfile, "converted") &&
             dbfile["converted"] ≠ filesize(file.location.target)
-            updated = true
-            dbfile["converted"] = filesize(file.location.target)
+            lock(thread) do
+                updated = true
+                dbfile["converted"] = filesize(file.location.target)
+            end
         end
     end
-    updated && Logging.with_logger(logger) do
-        @info "updated file stats for $(file.date)"
-        inventory["metadata"]["database"]["updated"] = Dates.now()
+    updated && lock(thread) do
+        Logging.with_logger(logger) do
+            @info "updated file stats for $(file.date)"
+            inventory["metadata"]["database"]["updated"] = Dates.now()
+        end
     end
-    push!(checked_dates, file.date)
     return
 end
 

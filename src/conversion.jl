@@ -82,7 +82,7 @@ function hdfupgrade(
     end
 end
 
-
+#=
 """
     hdfupgrade(
         rootdir::String=".",
@@ -163,7 +163,7 @@ function hdfupgrade(
         h4cleanup(h4deletions, clean, logger)
     end #close log file
 end
-
+ =#
 
 ## Setup functions
 
