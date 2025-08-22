@@ -137,17 +137,11 @@ function sftp_download(
         end
 
         ## Download
-        #* Loop over folders, download missing data from server
+        #* Download missing data from server
         @info "downloading data from ICARE server"
         counter = Counter()
-        try
-            # Loop over available dates
-            converter = converterpath(converter)
-            dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
-            for date in dates
-                # Match folder structure with server
-                sync!(icare, inventory, date, converter, update, resync, logger, logio, counter)
-            end
+        # Match folder structure with server
+        try sync!(icare, inventory, daterange, converter, update, resync, logger, logio, counter)
         finally
             #* Log end of download session and save inventory
             save_inventory(inventory, t0)
@@ -286,7 +280,7 @@ end
     sync!(
         icare::SFTP.Client,
         inventory::OrderedDict,
-        date::Date,
+        daterange::@NamedTuple{start::Date, stop::Date},
         converter::String,
         update::Bool,
         resync::Bool,
@@ -295,18 +289,17 @@ end
         counter::Counter
     )
 
-Synchronize the files for the selected `date` from the `icare` server with the local system.
+Synchronize the files for the selected `daterange` from the `icare` server with the local system.
 Use the `converter` to change the file format.
 If set, `update` files to the latest version available on the server. Dates and files are
 compared to the `inventory` and the `inventory` is updated, if necessary.
 Increase the respective counter for each sync action and log `logger` events to a log file
 in the `logio` I/O stream.
 """
-
 function sync!(
     icare::SFTP.Client,
     inventory::OrderedDict,
-    date::Date,
+    daterange::@NamedTuple{start::Date, stop::Date},
     converter::String,
     update::Bool,
     resync::Bool,
@@ -315,58 +308,69 @@ function sync!(
     counter::Counter
 )::Nothing
     # TODO implement parallel downloads
-    files = inventory["dates"][date]
-    checked_dates = Vector{Date}()
-    pm.@showprogress dt=1 desc="$date:" for file in files.keys
-        #* Define current file locations
-        dbfile = File(icare, inventory, date, file, converter)
+    #* Define all files for download
+    converter = converterpath(converter)
+    dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
+    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, converter)
+        for date in dates]...)
+
+    checked_dates = Vector{Date}() # ℹ to avoid slow connections to the server
+    pm.@showprogress dt=5 desc="downloading..." for file in files
         #* Check for previous downloads
-        if downloaded(inventory, dbfile, date, update)
+        if downloaded(inventory, file, update)
             Logging.with_logger(logger) do
-                @debug "skipping $(dbfile.name), already downloaded" _module=nothing _file=nothing _line=nothing
+                @debug "skipping $(file.name), already downloaded" _module=nothing _file=nothing _line=nothing
                 flush(logio)
             end
             counter.skipped += 1
             continue
         end
         t0 = Dates.now()
-        orig = isfile(dbfile.location.download)
+        orig = isfile(file.location.download)
         #* Download file and optionally convert to another format
         try
-            download(icare, inventory, dbfile, date, update)
-            convert!(inventory, dbfile, date, converter, logger)
+            download(icare, inventory, file, update)
+            convert!(inventory, file, converter, logger)
         catch error
             Logging.with_logger(logger) do
-                @error "Failed to download $(dbfile.name); attempting again" error
+                @error "Failed to download $(file.name); attempting again" error
             end
         end
         #* Error handling/Re-download, if unsuccessful
-        if !downloaded(inventory, dbfile, date, update)
+        if !downloaded(inventory, file, update)
             # Check connection to ICARE server
             icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
                 inventory["metadata"]["server"]["product"], logger)
             # Check for correct server-side file stats
-            update_stats!(icare, inventory,files, dbfile, date, checked_dates, resync, logger)
+            update_stats!(icare, inventory, file, checked_dates, resync, logger)
             try
-                download(icare, inventory, dbfile, date, update)
-                convert!(inventory, dbfile, date, converter, logger)
+                download(icare, inventory, file, update)
+                convert!(inventory, file, converter, logger)
             catch error
                 Logging.with_logger(logger) do
-                    @error("Second download attempt failed for $(dbfile.name); no further attempts",
+                    @error("Second download attempt failed for $(file.name); no further attempts",
                         error, _module=nothing, _file=nothing, _line=nothing)
                 end
             end
         end
         #* Clean-up
-        if downloaded(inventory, dbfile, date, update)
-            orig &= filesize(dbfile.location.download) == inventory["dates"][date][dbfile.name]["size"]
-            orig || rm(dbfile.location.download, force=true)
+        if downloaded(inventory, file, update)
+            orig &= filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
+            orig || rm(file.location.download, force=true)
             t1 = Dates.now()
-            Logging.with_logger(logger) do
-                @debug("downloaded $(dbfile.location.remote) in $(Dates.canonicalize(t1 - t0)) @$t1",
-                     _module=nothing, _file=nothing, _line=nothing)
+            if orig
+                counter.conversions += 1
+                Logging.with_logger(logger) do
+                    @debug("$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1",
+                        _module=nothing, _file=nothing, _line=nothing)
+                end
+            else
+                counter.downloads += 1
+                Logging.with_logger(logger) do
+                    @debug("downloaded $(file.name) in $(Dates.canonicalize(t1 - t0)) @$t1",
+                        _module=nothing, _file=nothing, _line=nothing)
+                end
             end
-            orig ? (counter.conversions += 1) : (counter.downloads += 1)
         else
             counter.failed += 1
         end
@@ -379,23 +383,21 @@ end
     download!(
         icare::SFTP.Client,
         inventory::OrderedDict,
-        dbfile::File,
-        date::Date,
-        update::Bool=true
+        file::File,
+        update
     )
 
-Download the `dbfile` for the given `date` from the `icare` server and update the `inventory`.
+Download the `file` from the `icare` server and update the `inventory`.
 Only download newer files on the server, if `update` is set to `true`.
 """
 function download(
     icare::SFTP.Client,
     inventory::OrderedDict,
-    dbfile::File,
-    date::Date,
-    update::Bool=true
+    file::File,
+    update
 )::Nothing
-    downloaded(inventory, dbfile, date, update, true) && return
-    SFTP.download(icare, dbfile.location.remote, dbfile.dir.dst, force=true)
+    downloaded(inventory, file, update, true) && return
+    SFTP.download(icare, file.location.remote, file.dir.dst, force=true)
     return
 end
 
@@ -403,28 +405,25 @@ end
 """
     downloaded(
         inventory::OrderedDict,
-        dbfile::File,
-        date::Date,
+        file::File,
         update::Bool,
         orig::Bool=false
     ) -> Bool
 
-Check, whether the `dbfile.target` for the given `date` has already been downloaded from the server
-to the local directory by comparing it to the `filestats` of the remote server in the `inventory`.
-If `update` is set, downloaded returns `false`, if newer versions of the `dbfile` exist on the
-server.
+Check, whether the `file.target` has already been downloaded from the server to the local
+directory by comparing it to the `filestats` of the remote server in the `inventory`. If `update`
+is set, downloaded returns `false`, if newer versions of the `file` exist on the server.
 When `orig` is set to `true`, downloaded checks against the downloaded instead of the target file.
 """
 function downloaded(
     inventory::OrderedDict,
-    dbfile::File,
-    date::Date,
+    file::File,
     update::Bool,
     orig::Bool=false
 )::Bool
-    filestats = inventory["dates"][date][dbfile.name]
+    filestats = inventory["dates"][file.date][file.name]
     # Check, if file exists (orig: checks download of original file from server, not converted file)
-    file = orig ? dbfile.location.download : dbfile.location.target
+    file = orig ? file.location.download : file.location.target
     isfile(file) || return false
     # Get file stats and type
     localstats = stat(file)
@@ -447,7 +446,6 @@ end
     convert!(
         inventory::OrderedDict,
         file::File,
-        date::Date,
         converter::String,
         logged::Logging.ConsoleLogger
     )
@@ -458,35 +456,26 @@ up-to-date. Log events to `logger`.
 function convert!(
     inventory::OrderedDict,
     file::File,
-    date::Date,
     converter::String,
     logger::Logging.ConsoleLogger
 )::Nothing
-    converted!(inventory, date, file) && return
+    converted!(inventory, file) && return
     rm(file.location.target, force=true)
     run(`julia $converter $(file.location.download)`)
-    set_converted_size!(inventory, date, file, logger)
+    set_converted_size!(inventory, file, logger)
 end
 
 
 """
-    converted!(
-        inventory::OrderedDict,
-        date::Date,
-        file::File
-    ) -> Bool
+    converted!(inventory::OrderedDict, file::File) -> Bool
 
 Check, whether the size of the converted `file` is known in the `data` dictionary and matches the
 actual file size.
 """
-function converted!(
-    inventory::OrderedDict,
-    date::Date,
-    file::File
-)::Bool
-    if haskey(inventory["dates"][date][file.name], "converted")
+function converted!(inventory::OrderedDict, file::File)::Bool
+    if haskey(inventory["dates"][file.date][file.name], "converted")
         # Compare file size with inventory
-        inventory["dates"][date][file.name]["converted"] == filesize(file.location.target)
+        inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
     else
         return false
     end
@@ -496,22 +485,20 @@ end
 """
     set_converted_size!(
         inventory::OrderedDict,
-        date::Date,
         file::File,
         logger::Logging.ConsoleLogger
     )
 
-Set the size of the converted `file` in the `inventory` for the given `date`
-and mark the `inventory` as updated. Log events to `logger`.
+Set the size of the converted `file` in the `inventory` and mark the `inventory` as updated.
+Log events to `logger`.
 """
 function set_converted_size!(
     inventory::OrderedDict,
-    date::Date,
     file::File,
     logger::Logging.ConsoleLogger
 )::Nothing
     # Initial checks
-    haskey(inventory["dates"][date][file.name], "converted") && return
+    haskey(inventory["dates"][file.date][file.name], "converted") && return
     if !isfile(file.location.target)
         Logging.with_logger(logger) do
             @error "cannot determine size of '$(file.location.target)'" _module=nothing _file=nothing _line=nothing
@@ -519,7 +506,7 @@ function set_converted_size!(
         return
     end
     # Save converted file size to inventory
-    inventory["dates"][date][file.name]["converted"] = filesize(file.location.target)
+    inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
     inventory["metadata"]["database"]["updated"] = Dates.now()
     return
 end

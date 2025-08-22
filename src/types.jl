@@ -26,6 +26,7 @@ Stores relevant data about file name, extension, and paths on the local and remo
 struct File
     name::String
     ext::String
+    date::Date
     location::@NamedTuple{
         target::String,
         download::String,
@@ -92,5 +93,5 @@ function File(
     download = joinpath(path, name*ext)
     target = isempty(converter) ? download : splitext(download)[1]*".h5"
     remote = joinpath(icare.uri, datadir..., name*ext).path
-    File(name, ext, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
+    File(name, ext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
 end

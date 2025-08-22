@@ -131,7 +131,7 @@ function filter_years!(
     if !resync
         # Default option: update outside known date range
         Logging.with_logger(logger) do
-            @info "Checking for new data not yet considered in the inventory"
+            @info "checking for new data not yet considered in the inventory"
         end
         # ℹ border years are only considered, if the new date is outside the known date range
         # ℹ of the inventory
@@ -141,7 +141,7 @@ function filter_years!(
         filter!(t -> lt(t, Dates.year(start)) || gt(t, Dates.year(stop)), years)
     else # force update
         Logging.with_logger(logger) do
-            @info "Checking inventory dates for updates"
+            @info "checking inventory dates for updates"
         end
         clear_dates!(inventory)
         empty!(inventory["gaps"])
@@ -240,7 +240,7 @@ function remotefiles!(
             "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
         )
         # Restore converted file sizes during resynchronisaton
-        haskey(inventory["temp"], files[i]) &&
+        haskey(inventory, "temp") && haskey(inventory["temp"], files[i]) &&
             (inventory["dates"][date][files[i]]["converted"] = inventory["temp"][files[i]])
     end
     # Update inventory metadata
@@ -267,40 +267,36 @@ end
     update_stats!(
         icare::SFTP.Client,
         inventory::OrderedDict,
-        files::OrderedDict,
         file::File,
-        date::Date,
         checked_dates::Vector{Date},
         resync::Bool,
         logger::Logging.ConsoleLogger
     )
 
-Update the `file` stats in the `inventory` with the remote `icare` server for the given `date`.
+Update the `file` stats in the `inventory` with the remote `icare` server.
 If the size of the converted file does not match the `inventory`, it is updated, too.
 Ignore already `checked_dates` or if the `inventory` was already `resync`ed.
-Reset data for `files` previously in the database, but currently not available on the server.
+Reset data for files previously in the database, but currently not available on the server.
 Log events to `logger`.
 """
 function update_stats!(
     icare::SFTP.Client,
     inventory::OrderedDict,
-    files::OrderedDict,
     file::File,
-    date::Date,
     checked_dates::Vector{Date},
     resync::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
     # Skip, if already updated at the beginning
-    (resync || date in checked_dates) && return
+    (resync || file.date in checked_dates) && return
     # Get stats of all files for the given date
     stats = SFTP.statscan(icare, file.dir.src)
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
-    obsolete = setdiff(files.keys, names)
+    obsolete = setdiff(inventory["dates"][file.date].keys, names)
     for file in obsolete
-        files[file]["size"] = 0
-        delete!(inventory["dates"][date][file], "converted")
+        inventory["dates"][file.date][file]["size"] = 0
+        delete!(inventory["dates"][file.date][file], "converted")
     end
     # Sort files by names (equals to time)
     sortorder = sortperm(names)
@@ -309,11 +305,11 @@ function update_stats!(
     updated = false
     for i in sortorder
         # Compare inventory with remote
-        dbfile = inventory["dates"][date][names[i]]
+        dbfile = inventory["dates"][file.date][names[i]]
         if stats[i].size == dbfile["size"] &&
             (Date∘Dates.unix2datetime)(stats[i].mtime) == dbfile["mtime"]
             updated = true
-            inventory["dates"][date][names[i]] = OrderedDict(
+            inventory["dates"][file.date][names[i]] = OrderedDict(
                 "size" => stats[i].size,
                 "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
             )
@@ -326,10 +322,10 @@ function update_stats!(
         end
     end
     updated && Logging.with_logger(logger) do
-        @info "updated file stats for $date"
+        @info "updated file stats for $(file.date)"
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
-    push!(checked_dates, date)
+    push!(checked_dates, file.date)
     return
 end
 
@@ -428,7 +424,7 @@ end
 """
     save_inventory(inventory::OrderedDict, t::DateTime)
 
-Save the `inventory` to `<product path>/inventory.yaml` if changes occured since time `t`.
+Save the `inventory` to `<product path>/inventory.yaml` if changes occurred since time `t`.
 """
 function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
     # Return, if no changes occured since time `t`

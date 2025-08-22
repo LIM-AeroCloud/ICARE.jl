@@ -12,9 +12,6 @@ ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
-[sources]
-SFTP = {rev = "feat/icare", url = "../SFTP.jl"}
-
 [compat]
 Dates = "1.11"
 Logging = "1.11"
