@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="0" y="0" width="32" height="32" fill="#4682B4" rx="4"/>
+  
+  <!-- Earth curve -->
+  <path d="M 0 24 Q 16 20 32 24 L 32 32 L 0 32 Z" fill="#228B22" opacity="0.8"/>
+  
+  <!-- Satellite -->
+  <g transform="translate(20,10)">
+    <rect x="-1" y="-1" width="2" height="2" fill="#C0C0C0"/>
+    <rect x="-2" y="-0.5" width="1" height="1" fill="#191970"/>
+    <rect x="1" y="-0.5" width="1" height="1" fill="#191970"/>
+    <line x1="0" y1="-1" x2="0" y2="-3" stroke="#FFD700" stroke-width="0.5"/>
+    <circle cx="0" cy="-3" r="0.5" fill="#FFD700"/>
+  </g>
+  
+  <!-- Cloud -->
+  <g transform="translate(8,18)" opacity="0.9">
+    <circle cx="0" cy="0" r="2" fill="#FFFFFF"/>
+    <circle cx="2" cy="-0.5" r="2.5" fill="#FFFFFF"/>
+    <circle cx="4" cy="0" r="2" fill="#FFFFFF"/>
+  </g>
+  
+  <!-- LIDAR beam -->
+  <line x1="20" y1="11" x2="16" y2="17" stroke="#00FF00" stroke-width="0.8" opacity="0.8"/>
+  
+  <!-- I logo text -->
+  <text x="4" y="12" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="#FFFFFF">I</text>
+</svg>

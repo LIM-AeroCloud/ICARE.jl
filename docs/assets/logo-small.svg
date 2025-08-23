@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient representing atmosphere -->
+  <defs>
+    <linearGradient id="atmosGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4682B4;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Cloud gradient -->
+    <radialGradient id="cloudGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#F0F8FF;stop-opacity:0.7" />
+    </radialGradient>
+    
+    <!-- Satellite orbital path -->
+    <linearGradient id="orbitGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:0.3" />
+      <stop offset="50%" style="stop-color:#FFD700;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#FFD700;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background representing Earth's atmosphere -->
+  <rect x="0" y="0" width="200" height="80" fill="url(#atmosGradient)" rx="8"/>
+  
+  <!-- Earth curve at bottom -->
+  <path d="M 0 60 Q 100 45 200 60 L 200 80 L 0 80 Z" fill="#228B22" opacity="0.6"/>
+  
+  <!-- Satellite orbital path -->
+  <ellipse cx="100" cy="25" rx="50" ry="15" fill="none" stroke="url(#orbitGradient)" stroke-width="1.5" stroke-dasharray="3,2"/>
+  
+  <!-- Satellite -->
+  <g transform="translate(130,22)">
+    <!-- Satellite body -->
+    <rect x="-2.5" y="-2" width="5" height="4" fill="#C0C0C0" stroke="#808080" stroke-width="0.3"/>
+    <!-- Solar panels -->
+    <rect x="-5" y="-1" width="2" height="2" fill="#191970"/>
+    <rect x="3" y="-1" width="2" height="2" fill="#191970"/>
+    <!-- Antenna -->
+    <line x1="0" y1="-2" x2="0" y2="-5" stroke="#808080" stroke-width="0.7"/>
+    <circle cx="0" cy="-5" r="1" fill="#FFD700"/>
+  </g>
+  
+  <!-- Clouds representing aerosol/cloud data -->
+  <g opacity="0.8">
+    <!-- Cloud 1 -->
+    <g transform="translate(35,40)">
+      <circle cx="0" cy="0" r="5" fill="url(#cloudGradient)"/>
+      <circle cx="5" cy="-1" r="6" fill="url(#cloudGradient)"/>
+      <circle cx="10" cy="0" r="5" fill="url(#cloudGradient)"/>
+      <circle cx="5" cy="3" r="4" fill="url(#cloudGradient)"/>
+    </g>
+    
+    <!-- Cloud 2 -->
+    <g transform="translate(145,45)">
+      <circle cx="0" cy="0" r="4" fill="url(#cloudGradient)"/>
+      <circle cx="4" cy="-1" r="5" fill="url(#cloudGradient)"/>
+      <circle cx="8" cy="0" r="4" fill="url(#cloudGradient)"/>
+    </g>
+  </g>
+  
+  <!-- LIDAR beam from satellite -->
+  <line x1="130" y1="24" x2="125" y2="42" stroke="#00FF00" stroke-width="1.5" opacity="0.7"/>
+  <line x1="130" y1="24" x2="127" y2="45" stroke="#00FF00" stroke-width="1" opacity="0.5"/>
+  <line x1="130" y1="24" x2="123" y2="40" stroke="#00FF00" stroke-width="1" opacity="0.5"/>
+  
+  <!-- ICARE text -->
+  <text x="15" y="25" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#FFFFFF" stroke="#4682B4" stroke-width="0.3">
+    ICARE
+  </text>
+  <text x="16" y="35" font-family="Arial, sans-serif" font-size="6" fill="#F0F8FF">
+    Atmospheric Data Retrieval
+  </text>
+  
+  <!-- Julia logo inspired element (three dots) -->
+  <g transform="translate(80,18)">
+    <circle cx="0" cy="0" r="2" fill="#389826"/>
+    <circle cx="5" cy="0" r="2" fill="#CB3C33"/>
+    <circle cx="2.5" cy="4" r="2" fill="#9558B2"/>
+  </g>
+</svg>

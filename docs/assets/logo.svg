@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="120" viewBox="0 0 300 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient representing atmosphere -->
+  <defs>
+    <linearGradient id="atmosGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4682B4;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Cloud gradient -->
+    <radialGradient id="cloudGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#F0F8FF;stop-opacity:0.7" />
+    </radialGradient>
+    
+    <!-- Satellite orbital path -->
+    <linearGradient id="orbitGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:0.3" />
+      <stop offset="50%" style="stop-color:#FFD700;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#FFD700;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background representing Earth's atmosphere -->
+  <rect x="0" y="0" width="300" height="120" fill="url(#atmosGradient)" rx="10"/>
+  
+  <!-- Earth curve at bottom -->
+  <path d="M 0 90 Q 150 70 300 90 L 300 120 L 0 120 Z" fill="#228B22" opacity="0.6"/>
+  
+  <!-- Satellite orbital path -->
+  <ellipse cx="150" cy="40" rx="80" ry="25" fill="none" stroke="url(#orbitGradient)" stroke-width="2" stroke-dasharray="5,3"/>
+  
+  <!-- Satellite -->
+  <g transform="translate(200,35)">
+    <!-- Satellite body -->
+    <rect x="-4" y="-3" width="8" height="6" fill="#C0C0C0" stroke="#808080" stroke-width="0.5"/>
+    <!-- Solar panels -->
+    <rect x="-8" y="-2" width="3" height="4" fill="#191970"/>
+    <rect x="5" y="-2" width="3" height="4" fill="#191970"/>
+    <!-- Antenna -->
+    <line x1="0" y1="-3" x2="0" y2="-8" stroke="#808080" stroke-width="1"/>
+    <circle cx="0" cy="-8" r="1.5" fill="#FFD700"/>
+  </g>
+  
+  <!-- Clouds representing aerosol/cloud data -->
+  <g opacity="0.8">
+    <!-- Cloud 1 -->
+    <g transform="translate(50,60)">
+      <circle cx="0" cy="0" r="8" fill="url(#cloudGradient)"/>
+      <circle cx="8" cy="-2" r="10" fill="url(#cloudGradient)"/>
+      <circle cx="16" cy="0" r="8" fill="url(#cloudGradient)"/>
+      <circle cx="8" cy="4" r="6" fill="url(#cloudGradient)"/>
+    </g>
+    
+    <!-- Cloud 2 -->
+    <g transform="translate(220,70)">
+      <circle cx="0" cy="0" r="6" fill="url(#cloudGradient)"/>
+      <circle cx="6" cy="-1" r="8" fill="url(#cloudGradient)"/>
+      <circle cx="12" cy="0" r="6" fill="url(#cloudGradient)"/>
+    </g>
+  </g>
+  
+  <!-- LIDAR beam from satellite -->
+  <line x1="200" y1="38" x2="190" y2="65" stroke="#00FF00" stroke-width="2" opacity="0.7"/>
+  <line x1="200" y1="38" x2="195" y2="68" stroke="#00FF00" stroke-width="1" opacity="0.5"/>
+  <line x1="200" y1="38" x2="185" y2="62" stroke="#00FF00" stroke-width="1" opacity="0.5"/>
+  
+  <!-- ICARE text -->
+  <text x="20" y="35" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#FFFFFF" stroke="#4682B4" stroke-width="0.5">
+    ICARE
+  </text>
+  <text x="22" y="50" font-family="Arial, sans-serif" font-size="8" fill="#F0F8FF">
+    Atmospheric Data Retrieval
+  </text>
+  
+  <!-- Julia logo inspired element (three dots) -->
+  <g transform="translate(125,25)">
+    <circle cx="0" cy="0" r="3" fill="#389826"/>
+    <circle cx="8" cy="0" r="3" fill="#CB3C33"/>
+    <circle cx="4" cy="7" r="3" fill="#9558B2"/>
+  </g>
+  
+  <!-- Data flow indicators -->
+  <g opacity="0.6">
+    <path d="M 70 45 Q 90 35 110 45" fill="none" stroke="#FFD700" stroke-width="1" stroke-dasharray="2,2" marker-end="url(#arrowhead)"/>
+    <path d="M 170 45 Q 190 35 210 45" fill="none" stroke="#FFD700" stroke-width="1" stroke-dasharray="2,2" marker-end="url(#arrowhead)"/>
+  </g>
+  
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#FFD700"/>
+    </marker>
+  </defs>
+</svg>

@@ -1,8 +1,10 @@
-ICARE.jl
-========
-
-A Julia package for retrieving data from the 
-[AERIS/ICARE server](http://www.icare.univ-lille1.fr/).
+<div align="center">
+  <img src="docs/assets/logo.svg" alt="ICARE.jl Logo" width="300"/>
+  
+  # ICARE.jl
+  
+  **A Julia package for retrieving data from the [AERIS/ICARE server](http://www.icare.univ-lille1.fr/)**
+</div>
 
 Use function `ftp_download` to retrieve missing CALIOP data 
 files in a specified time frame. 
