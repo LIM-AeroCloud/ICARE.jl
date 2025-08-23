@@ -248,8 +248,13 @@ function set_localroot(localroot::String, mainfolder::String)::String
         # Make sure product folder exists, if localroot already exists
         mkpath(productpath)
     end
+    path = realpath(productpath)
+    pathparts = splitpath(path)
+    if any(isfile.([joinpath(pathparts[1:i]..., "inventory.yaml") for i = 1:length(pathparts) - 1]))
+        throw(Base.IOError("nested inventories are not allowed", Integer(SFTP.EC_FILE_EXISTS)))
+    end
     # Change to productpath and return absolute path as String
-    return realpath(productpath)
+    return path
 end
 
 

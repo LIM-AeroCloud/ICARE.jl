@@ -83,7 +83,7 @@ function new_inventory!(
         @info "initialising new, empty inventory"
     end
     inventory["metadata"] = OrderedDict{String,Any}(
-        "file" => OrderedDict{String,Any}("count" => 0),
+        "file" => OrderedDict{String,Any}("count" => 0, "converted" => 0),
         "server" => OrderedDict{String,String}(
             "product" => product,
             "root" => dirname(icare),
@@ -146,6 +146,7 @@ function filter_years!(
         clear_dates!(inventory)
         empty!(inventory["gaps"])
         inventory["metadata"]["file"]["count"] = 0
+        inventory["metadata"]["file"]["converted"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
         inventory["metadata"]["database"]["start"] = Date(9999)
@@ -445,6 +446,8 @@ function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
     # Update statistics
     inventory["metadata"]["database"]["dates"] = length(inventory["dates"])
     inventory["metadata"]["file"]["count"] = sum(length.(inventory["dates"][date] for date in inventory["dates"].keys))
+    filedata = vcat([d.vals for d in [inventory["dates"][date] for date in inventory["dates"].keys]]...)
+    inventory["metadata"]["file"]["converted"] = haskey.(filedata, "converted") |> count
     inventory["metadata"]["database"]["updated"] = Dates.now()
     # Save invetory with updated mtime
     YAML.write_file(file, inventory)
