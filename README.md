@@ -9,6 +9,13 @@ Routines are developed to retrieve CALIOP aerosol and cloud data, but will work 
 data that has a root folder in the format `<product>.v<major>.<minor>` and a subfolder
 structure of years and dates like this: `yyyy/yyyy_mm_dd`.
 
+License
+-------
+
+The code is free to use for non-commercial use under the GPL3 license. Binaries included for
+the conversion of HDF4 to HDF5 files are available under szip license for non-commercial,
+scientific use.
+
 Installation
 ------------
 
