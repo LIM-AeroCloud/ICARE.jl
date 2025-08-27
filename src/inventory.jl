@@ -31,7 +31,7 @@ function product_database!(
     logger::Logging.ConsoleLogger
 )::Nothing
     # Defining inventory source file and available years on server
-    database = joinpath(root, product, "inventory.yaml")
+    database = joinpath(root, product, ".inventory.yaml")
     years = parse.(Int, readdir(icare))
     if isfile(database)
         # Read available inventory
@@ -435,13 +435,13 @@ end
 """
     save_inventory(inventory::OrderedDict, t::DateTime)
 
-Save the `inventory` to `<product path>/inventory.yaml` if changes occurred since time `t`.
+Save the `inventory` to `<product path>/.inventory.yaml` if changes occurred since time `t`.
 """
 function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
     # Return, if no changes occured since time `t`
     inventory["metadata"]["database"]["updated"] > t || return
     # Define inventory file
-    file = joinpath(inventory["metadata"]["local"]["path"], "inventory.yaml")
+    file = joinpath(inventory["metadata"]["local"]["path"], ".inventory.yaml")
     @info "saving inventory to '$file'"
     # Update statistics
     inventory["metadata"]["database"]["dates"] = length(inventory["dates"])
