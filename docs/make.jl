@@ -22,8 +22,10 @@ makedocs(
     ),
     pages=[
         "Home" => "index.md",
+        "Download" => "download.md",
+        "API" => "api.md",
         "Release notes" => "release-notes.md",
-        # "Index" => "register.md"
+        "Index" => "register.md"
     ]
 )
 
