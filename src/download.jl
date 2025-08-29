@@ -43,7 +43,7 @@ or a year (if both day and month are omitted).
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
 - `remoteroot::String`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
 - `localroot::String`: The root path on the local machine (default: `"."`).
-- `converter::Union{Nothing,String}`: The converter to use for the downloaded files (default: `""`).
+- `converter::Union{Nothing,String}`: The converter to use for the downloaded files (default: HDF4 to HDF5).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`).
@@ -58,8 +58,12 @@ float with two decimal places independent of the input format.
 
 Bu default, hdf files (version 4) are assumed as download source, which will be converted to
 `.h5` (HDF5) files. The `converter` kwarg allows you to specify the path to a personalised
-conversion script to manage other file formats. If, `converter` is set to `nothing`, files
-will be downloaded from the ICARE server and the original file format is kept.
+conversion script to manage other file formats. The script must contain 2 functions with the
+signature `convert_file(input::Nothing, output::String)::String` and `newext()::String`. The
+first function converts the `input` file to the `output` format and the second function returns
+the new file extension including the dot, e.g. `.h5` for the standard conversion. If, `converter`
+is set to `nothing`, files will be downloaded from the ICARE server and the original file format
+is kept.
 
 # The local inventory
 
@@ -104,6 +108,8 @@ function sftp_download(
         Logging.with_logger(logger) do
             @info "downloading '$product' data to '$productpath'"
         end
+        # Include file conversion routine
+        include_converter(converter, logger)
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
         ts = Dates.now()
@@ -125,6 +131,7 @@ function sftp_download(
                 @error "failed to load local inventory" error
             end
             save_inventory(inventory, ts)
+            @error "failed to load local inventory" _module=nothing _file=nothing _line=nothing
             return
         end
         # Log download session
@@ -140,10 +147,12 @@ function sftp_download(
         #* Download missing data from server
         @info "downloading data from ICARE server"
         @info("up to $(Threads.nthreads()) parallel downloads available\n"*
-            "start julia with `julia -t <number>` to change `<number>` of parallel downloads")
+            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
         counter = Counter()
         # Match folder structure with server
-        try sync!(icare, inventory, daterange, converter, update, resync, logger, logio, counter)
+        try sync!(icare, inventory, daterange, update, resync, logger, logio, counter)
+        catch
+            @error "failed to sync with ICARE server" _module=nothing _file=nothing _line=nothing
         finally
             #* Log end of download session and save inventory
             save_inventory(inventory, t0)
@@ -288,7 +297,6 @@ end
         icare::SFTP.Client,
         inventory::OrderedDict,
         daterange::@NamedTuple{start::Date, stop::Date},
-        converter::String,
         update::Bool,
         resync::Bool,
         logger::Logging.ConsoleLogger,
@@ -297,7 +305,6 @@ end
     )
 
 Synchronize the files for the selected `daterange` from the `icare` server with the local system.
-Use the `converter` to change the file format.
 If set, `update` files to the latest version available on the server. Dates and files are
 compared to the `inventory` and the `inventory` is updated, if necessary.
 Increase the respective counter for each sync action and log `logger` events to a log file
@@ -307,7 +314,6 @@ function sync!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     daterange::@NamedTuple{start::Date, stop::Date},
-    converter::Union{Nothing,String},
     update::Bool,
     resync::Bool,
     logger::Logging.ConsoleLogger,
@@ -315,17 +321,9 @@ function sync!(
     counter::Counter
 )::Nothing
     #* Define all files for download
-    converter = converterpath(converter)
     dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
-    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, converter)
+    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys)
         for date in dates]...)
-    Logging.with_logger(logger) do
-        if isempty(converter)
-            @info "no file conversion after download"
-        else
-            @info "file conversion to new format for all downloads" converter
-        end
-    end
 
     prog = pm.Progress(length(files), desc="downloading...")
     @threads for file in files
@@ -347,7 +345,7 @@ function sync!(
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
-            convert!(inventory, file, converter, logger)
+            convert!(inventory, file, logger)
         catch error
             lock(thread) do
                 #* Log download errors
@@ -367,7 +365,7 @@ function sync!(
             update_stats!(icare, inventory, file, resync, logger)
             try
                 download(icare, inventory, file, update)
-                convert!(inventory, file, converter, logger)
+                convert!(inventory, file, logger)
             catch error
                 lock(thread) do
                     #* Log second download attempt errors
@@ -386,8 +384,7 @@ function sync!(
         #* Clean-up
         if downloaded(inventory, file, update)
             # Remove original downloads unless no conversion is selected or original file already existed
-            orig &= filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
-            isempty(converter) || orig || rm(file.location.download, force=true)
+            isempty(Base.invokelatest(CONVERTER[].newext)) || orig || rm(file.location.download, force=true)
             # Log download success
             t1 = Dates.now()
             if orig
@@ -485,38 +482,36 @@ end
     convert!(
         inventory::OrderedDict,
         file::File,
-        converter::String,
         logged::Logging.ConsoleLogger
     )
 
-Convert the `file` to a new file format using the `converter` script unless `file` is already
+Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
 up-to-date. Log events to `logger`.
 """
 function convert!(
     inventory::OrderedDict,
     file::File,
-    converter::String,
     logger::Logging.ConsoleLogger
 )::Nothing
-    converted!(inventory, file, converter) && return
+    converted!(inventory, file) && return
     rm(file.location.target, force=true)
-    run(`julia $converter $(file.location.download)`)
+    Base.invokelatest(CONVERTER[].convert_file, file.location.download, file.location.target)
     set_converted_size!(inventory, file, logger)
 end
 
 
 """
-    converted!(inventory::OrderedDict, file::File, converter::String) -> Bool
+    converted!(inventory::OrderedDict, file::File) -> Bool
 
-Check, whether the size of the converted `file` is known in the `data` dictionary and matches the
-actual file size. Return also `true`, if no `converter` is selected.
+Check, whether the size of the converted `file` is known in the `inventory` and matches the
+actual file size. Return also `true`, if conversion is opted out.
 """
-function converted!(inventory::OrderedDict, file::File, converter::String)::Bool
+function converted!(inventory::OrderedDict, file::File)::Bool
     if haskey(inventory["dates"][file.date][file.name], "converted")
         # Compare file size with inventory
         inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
     else
-        return isempty(converter)
+        return isempty(Base.invokelatest(CONVERTER[].newext))
     end
 end
 
@@ -558,21 +553,39 @@ end
 
 
 """
-    converterpath(converter::Union{Nothing,String}) -> String
+    include_converter(converter::Union{Nothing,String}, logger::Logging.ConsoleLogger)
 
-Return the path to the converter script for file format conversion.
-If `converter` is `nothing`, return an empty string.
-If `converter` is an empty string, return the default path to the converter script.
-If `converter` is a string, return it or throw an error for invalid paths.
+Include the path of the `converter`, which should hold a function `convert(::String)::String`
+to convert the downloaded data files to a different file format. The returned `String` is the
+new file extension including the leading dot, e.g., `".h5"`. Log events to `logger`.
+
+!!! info
+    The const ref `CONVERTER` is needed to make the included functions from the optional include
+    files available in the module scope. The `invokelatest` function call is necessary as the
+    includes here are at a later world age than the rest of the module.
 """
-function converterpath(converter::Union{Nothing,String})::String
+function include_converter(converter::Union{Nothing,String}, logger::Logging.ConsoleLogger)::Nothing
     if isnothing(converter)
-        ""
+        Logging.with_logger(logger) do
+            @info "no file conversion after download"
+        end
+        path = realpath(joinpath(@__DIR__, "..", "assets", "noconversion.jl"))
+        include(path)
     elseif isempty(converter)
-        realpath(joinpath(@__DIR__, "..", "data", "h4toh5.jl"))
+        Logging.with_logger(logger) do
+            @info "standard HDF4 to HDF5 file conversion for all downloads"
+        end
+        path = realpath(joinpath(@__DIR__, "..", "assets", "h4toh5.jl"))
+        include(path)
     else
-        realpath(converter)
+        Logging.with_logger(logger) do
+            @info "custom file conversion to new format for all downloads"
+        end
+        path = realpath(converter)
+        include(path)
     end
+    CONVERTER[] = (convert_file = convert_file, newext = newext)
+    return
 end
 
 

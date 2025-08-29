@@ -21,6 +21,7 @@ import Base.Threads: @threads
 
 # global thread lock
 const thread = ReentrantLock()
+const CONVERTER = Ref{NamedTuple}()
 
 # Export functions
 export sftp_download, hdfupgrade

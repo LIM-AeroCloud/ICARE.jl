@@ -83,7 +83,7 @@ function new_inventory!(
         @info "initialising new, empty inventory"
     end
     inventory["metadata"] = OrderedDict{String,Any}(
-        "file" => OrderedDict{String,Any}("count" => 0, "converted" => 0),
+        "file" => OrderedDict{String,Any}("count" => 0, "conversions" => 0, "ext" => ""),
         "server" => OrderedDict{String,String}(
             "product" => product,
             "root" => dirname(icare),
@@ -102,6 +102,8 @@ function new_inventory!(
             "updated" => Dates.now()
         )
     )
+    ext = Base.invokelatest(CONVERTER[].newext)
+    inventory["metadata"]["file"]["newext"] = ext
     inventory["dates"] = OrderedDict{Date,OrderedDict}()
     inventory["gaps"] = Vector{Date}()
     return
@@ -146,7 +148,7 @@ function filter_years!(
         clear_dates!(inventory)
         empty!(inventory["gaps"])
         inventory["metadata"]["file"]["count"] = 0
-        inventory["metadata"]["file"]["converted"] = 0
+        inventory["metadata"]["file"]["conversions"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
         inventory["metadata"]["database"]["start"] = Date(9999)
@@ -198,6 +200,8 @@ function sync_database!(
         inventory["metadata"]["database"]["start"] = minimum(inventory["dates"].keys)
         inventory["metadata"]["database"]["stop"] = maximum(inventory["dates"].keys)
     end
+    # Save extension for conversion to inventory
+    newext!(inventory)
     # Delete possible temporary inventory data
     delete!(inventory, "temp")
     # Save data gaps to inventory
@@ -207,6 +211,34 @@ function sync_database!(
     updated && Logging.with_logger(logger) do
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
         inventory["metadata"]["database"]["updated"] = Dates.now()
+    end
+    return
+end
+
+
+"""
+    newext!(inventory::OrderedDict)
+
+Check and update the converted file extension in the inventory.
+"""
+function newext!(inventory::OrderedDict)::Nothing
+    # Definitions
+    target = Base.invokelatest(CONVERTER[].newext)
+    ext = inventory["metadata"]["file"]["ext"]
+    newext = inventory["metadata"]["file"]["newext"]
+    # Set ext to newext in inventory and return, if no conversion is selected
+    isempty(target) && return
+    if ext == newext
+        # Save extension for conversion in inventory, if not done before
+        if target == newext
+            throw(ArgumentError("extension for conversion must differ from original file type"))
+        else
+            newext = target
+        end
+    elseif target == newext
+        # Check previous extensions are consistent with current conversions
+        throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
+            "(current: $newext, target: $target)"))
     end
     return
 end
@@ -246,7 +278,7 @@ function remotefiles!(
     end
     # Update inventory metadata
     file = inventory["metadata"]["file"]
-    haskey(file, "ext") || (file["ext"] = splitext(stats[1].desc)[2])
+    isempty(file["ext"]) || (file["ext"] = splitext(stats[1].desc)[2])
     return true
 end
 
@@ -447,7 +479,7 @@ function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
     inventory["metadata"]["database"]["dates"] = length(inventory["dates"])
     inventory["metadata"]["file"]["count"] = sum(length.(inventory["dates"][date] for date in inventory["dates"].keys))
     filedata = vcat([d.vals for d in [inventory["dates"][date] for date in inventory["dates"].keys]]...)
-    inventory["metadata"]["file"]["converted"] = haskey.(filedata, "converted") |> count
+    inventory["metadata"]["file"]["conversions"] = haskey.(filedata, "converted") |> count
     inventory["metadata"]["database"]["updated"] = Dates.now()
     # Save invetory with updated mtime
     YAML.write_file(file, inventory)
