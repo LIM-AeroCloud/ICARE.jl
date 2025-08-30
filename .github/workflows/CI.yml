@@ -27,6 +27,7 @@ jobs:
         shell: julia --project --color=yes {0}
         run: |
           using Pkg
+          Pkg.rm("SFTP")
           Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git#main")
           Pkg.activate("docs")
           Pkg.develop(PackageSpec(path=pwd()))
