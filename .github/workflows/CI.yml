@@ -27,12 +27,12 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Pkg
-          Pkg.activate("docs")
           Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git#main")
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
           Pkg.resolve()
           Pkg.precompile()
+          println("setup complete")
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:
@@ -42,7 +42,7 @@ jobs:
         shell: julia --project=docs --color=yes {0} -e 'using Pkg; Pkg.instantiate()'
         run: |
           using Documenter: DocMeta, doctest
-          using SFTP
           using ICARE
+          println("Running doctests for ICARE...")
           DocMeta.setdocmeta!(ICARE, :DocTestSetup, :(using ICARE); recursive=true)
           doctest(ICARE)
