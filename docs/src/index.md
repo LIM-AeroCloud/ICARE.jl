@@ -4,13 +4,13 @@
 
 ## Overview
 
-__ICARE.jl__ provides a secure ftp connection to the ICARE Data and Services Centre to download
+_ICARE.jl_ provides a secure ftp connection to the ICARE Data and Services Centre to download
 available satellite data. The package is intended for CALIOP data, but was written in a generic
 way that should allow downloads of any data with a folder structure:
 
     <root path>/<main product folder>/yyyy/yyyy_mm_dd
 
-Furthermore, __ICARE.jl__ allows the upgrade of HDF4 file format used in the ICARE database to
+Furthermore, _ICARE.jl_ allows the upgrade of HDF4 file format used in the ICARE database to
 HDF5 or any user defined conversions. Parallel downloads are possible by starting julia with
 multiple threads:
 
@@ -27,13 +27,13 @@ connection, fewer threads may be desired. In this case, give the number of threa
 !!! note
     To use the package, a user account at the
     [AERIS/ICARE Data Centre](https://www.icare.univ-lille1.fr/) is needed, which is available
-    free of charge.
+    free of charge for scientific, non-commercial use.
 
 ## License
 
-__ICARE.jl__ is free to use for non-commercial applications under the Gnu General Public License. 
-Binaries included for the HDF4 to HDF5 file conversion are available under szip license for 
-non-commercial, scientific use.
+_ICARE.jl_ is free to use under the Gnu General Public License. However, binaries included for
+the HDF4 to HDF5 file conversion are available under the szip license for non-commercial,
+scientific use only.
 
 ## Installation
 
@@ -54,7 +54,6 @@ Pages = [
     "index.md",
     "download.md",
     "adaptation.md",
-    "development.md",
     "release-notes.md",
     "register.md"
 ]

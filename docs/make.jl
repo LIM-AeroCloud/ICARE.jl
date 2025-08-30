@@ -24,7 +24,6 @@ makedocs(
         "Home" => "index.md",
         "Download" => "download.md",
         "Adaptation" => "adaptation.md",
-        "Pkg development" => "development.md",
         "Release notes" => "release-notes.md",
         "Index" => "register.md"
     ]

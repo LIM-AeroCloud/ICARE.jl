@@ -115,7 +115,7 @@ in the log file. The `Debug` level is used to inform about completed downloads.
 ## Converting data files
 
 Routines related to file conversion without download from the AERIS/ICARE server are currently
-being refactored. **They may or may not work at any point.**
+being refactored. **They may or may not work at current.**
 
 ```@docs
 hdfupgrade
