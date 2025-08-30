@@ -184,6 +184,7 @@ function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple
     contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
     logfile, logext = splitext(logfile)
     logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
+    logfile = expanduser(logfile)
     return logfile, level
 end
 

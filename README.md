@@ -1,8 +1,14 @@
 ICARE.jl
 ========
 
+![ICARE logo](docs/src/assets/logo.svg)
+
 A Julia package for retrieving data from the
-[AERIS/ICARE server](http://www.icare.univ-lille1.fr/).
+[AERIS/ICARE server](https://www.icare.univ-lille1.fr/).
+
+<a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0">
+<img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a>
+<div>[![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url]|</div>
 
 Use function `sftp_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
@@ -12,18 +18,20 @@ structure of years and dates like this: `yyyy/yyyy_mm_dd`.
 License
 -------
 
-The code is free to use for non-commercial use under the GPL3 license. Binaries included for
-the conversion of HDF4 to HDF5 files are available under szip license for non-commercial,
-scientific use.
+The code is free to use under the GPL3 license. However, binaries included for the conversion
+of HDF4 to HDF5 files are available under szip license for non-commercial, scientific use only.
 
 Installation
 ------------
 
-ICARE.jl is an unregistered Julia package, but can be installed with the package manager:
+ICARE.jl is an unregistered Julia package, but can be installed with the package manager. It
+also includes an unregistered dependency `SFTP.jl`, which needs to be install first. For both
+packages, switch to the `main` branch to only obtain stable versions.
 
 ```julia
 julia> ]
-pkg> add https://github.com/pb866/ICARE.jl.git
+pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
+pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git#main
 pkg> ← (backspace)
 julia> using ICARE
 ```
@@ -33,24 +41,24 @@ SFTP download
 
 ```julia
 function sftp_download(
-  user::String,
-  password::String,
-  product::String,
-  startdate::Int,
-  enddate::Int=-1;
-  version::Float64 = 4.20,
-  remoteroot::String = "/SPACEBORNE/CALIOP/",
-  localroot::String = ".",
-  format::UInt8 = 0x02,
-  update::Bool = false,
-  remoteext::String = ".hdf",
-  logfile::String = "downloads.log",
-  loglevel::Symbol = :Debug
+    user::String,
+    password::String,
+    product::String,
+    startdate::Int,
+    enddate::Int=-1;
+    version::Union{Nothing,Real} = 4.51,
+    remoteroot::String = "/SPACEBORNE/CALIOP/",
+    localroot::String = ".",
+    converter::Union{Nothing,String} = "",
+    resync::Bool = false,
+    update::Bool = false,
+    logfile::String = "downloads.log",
+    loglevel::Symbol = :Debug
 )::Nothing
 ```
 
-Download missing CALIOP hdf files of `product` type (e.g., `"05kmAPro"` or `"01kmCLay"`)
-and `version` (e.g., `3.01` or `4.2`, default is `4.20`) from the ICARE server
+Download missing CALIOP hdf files for the given `product` (e.g., `"05kmAPro"` or `"01kmCLay"`)
+and `version` (e.g., `4.51` or `5`, default is `4.51`) from the ICARE server
 using your `user` login name and `password`.
 
 Data is downloaded for the specified time frame in the range `startdate` to `enddate`;
@@ -80,37 +88,25 @@ automatically created:
     - date folder as `yyyy_mm_dd`
 
 Hence, the folder structure of the Aeris/ICARE server will be synced and data files
-are downloaded to the appropriate folders.
-
-In contrast to previous versions, folders will only be created upon the initial download
-of the first data file. If the folder already contains data files from previous downloads,
-these downloads will be skipped, if the previous download was complete.
+are downloaded to the respective date folders.
 
 You may enforce an update of newer versions of a file on the server by setting
 `update` to `true`.
 
-Furthermore, the option is given to convert to the newer HDF5 format. You may keep the old
-HDF4, or only use `.h5` files to save disk space. The following options are available by
-setting the `format` flag. The `UInt8` input can be given in hex or binary format:
-
-- HDF4: `0x01` or `0b01`
-- HDF5: `0x02` or `0b10`
-- both: `0x03` or `0b11`
-
 ### Logging
 
 Download sessions are logged to a log file in addition to the progress bar for downloads
-of each date. You can specify the directory and file name with the `logfile` keyword 
+of each date. You can specify the directory and file name with the `logfile` keyword
 argument. By default, all log files are written to the main folder of each `product`.
-By passing a valid path (relative or absolute) within the `logfile` keyword, this position 
-can be changed as well as the file name, e.g. to save the log file in the parent folder of 
+By passing a valid path (relative or absolute) within the `logfile` keyword, this position
+can be changed as well as the file name, e.g. to save the log file in the parent folder of
 your current directory, rename it to "CALIOPdownloads" and chang the extension to ".txt", use
-`../CALIOPdownloads.txt`. 
+`../CALIOPdownloads.txt`.
 
-To all log files a timestamp will be added automatically in the format `yyyy_mm_dd_HH_MM_SS`. 
+To all log files a timestamp will be added automatically in the format `yyyy_mm_dd_HH_MM_SS`.
 All log files have the format `path/to/logfile_<timestamp>.ext`.
-This has the advantage that names can be reused for several download sessions and the 
-standard file name does not have to be changed. One can also see, when files where last 
+This has the advantage that names can be reused for several download sessions and the
+standard file name does not have to be changed. One can also see, when files where last
 downloaded from a glance.
 
 ### Example script
@@ -124,7 +120,7 @@ using ICARE
 # Download all data from the year 2010
 localroot = "/Users/home/data/CALIOP/"
 sftp_download(
-  "pb866",
+  "user",
   "PassWord#1!",
   "05kmCPro",
   2010;
@@ -134,6 +130,8 @@ sftp_download(
 
 HDF4 to HDF5 conversion
 -----------------------
+
+> **Note:** File conversion is currently being refactored and may or may not currently work.
 
 ```julia
 function hdfupgrade(
