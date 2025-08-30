@@ -6,7 +6,7 @@ ICARE.jl
 A Julia package for retrieving data from the
 [AERIS/ICARE server](https://www.icare.univ-lille1.fr/).
 
-![badge](docs/src/assets/badge.svg)
+<img src="docs/src/assets/badge.svg" width="120">
 
 Use function `sftp_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
