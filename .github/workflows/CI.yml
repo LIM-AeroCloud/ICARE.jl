@@ -30,6 +30,8 @@ jobs:
           Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git#main")
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
+          Pkg.resolve()
+          Pkg.precompile()
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:
