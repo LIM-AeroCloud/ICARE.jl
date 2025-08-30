@@ -39,9 +39,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
       - name: Run doctests
-        shell: julia --project=docs --color=yes {0}
+        shell: julia --project=docs --color=yes {0} -e 'using Pkg; Pkg.instantiate()'
         run: |
           using Documenter: DocMeta, doctest
+          using SFTP
           using ICARE
           DocMeta.setdocmeta!(ICARE, :DocTestSetup, :(using ICARE); recursive=true)
           doctest(ICARE)
