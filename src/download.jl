@@ -9,20 +9,21 @@
         product::String,
         startdate::Int,
         enddate::Int=-1;
-        version::Union{Nothing,Real} = 5,
+        version::Union{Nothing,Real} = 4.51,
         remoteroot::String = "/SPACEBORNE/CALIOP/",
         localroot::String = ".",
         converter::Union{Nothing,String} = "",
         resync::Bool = false,
         update::Bool = false,
         logfile::String = "downloads.log",
-       loglevel::Symbol = :Debug
+        loglevel::Symbol = :Debug
    )
 
 Download satellite data from the Aeris/ICARE server.
 
-To use `sftp_download`, an Aeris/ICARE account is needed that is available for free at
-https://www.icare.univ-lille.fr.
+!!! note
+    To use `sftp_download`, an [Aeris/ICARE account](https://www.icare.univ-lille.fr) is needed
+    that is available for free for non-commercial use.
 
 # Positional arguments
 
@@ -42,8 +43,8 @@ or a year (if both day and month are omitted).
 
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
 - `remoteroot::String`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
-- `localroot::String`: The root path on the local machine (default: `"."`).
-- `converter::Union{Nothing,String}`: The converter to use for the downloaded files (default: `""`).
+- `localroot::String`: The root path on the local machine containing the product folder (default: `"."`).
+- `convert::Bool`: Whether or not to convert the downloaded files to another file format (default: `true`).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`).
@@ -51,26 +52,17 @@ or a year (if both day and month are omitted).
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 
-For maximum flexibility to donwload formats ICARE.jl is not intended to, the `version` can be
-set to `nothing`. Use the `product` positional argument to define the whole name of the product
-folder. By default, the product folder is constructed as `<product>.v<X.XX>` with the version as
+!!! warning
+    The `update` option automatically resynchronises the inventory as well.
+
+    Re-synchronisation of the inventory will take several minutes up to hours!
+
+For custom version formats, the `version` can be set to `nothing` and included in the `product`
+string. By default, the product folder is constructed as `<product>.v<X.XX>` with the version as
 float with two decimal places independent of the input format.
 
-Bu default, hdf files (version 4) are assumed as download source, which will be converted to
-`.h5` (HDF5) files. The `converter` kwarg allows you to specify the path to a personalised
-conversion script to manage other file formats. If, `converter` is set to `nothing`, files
-will be downloaded from the ICARE server and the original file format is kept.
-
-# The local inventory
-
-The first time, a `product` is downloaded, a product folder is created with an `inventory.yaml`
-in the `localroot` that holds all information about the folder and file structure.
-The creation of the inventory will take several minutes. After the initial sync, the inventory
-will be updated automatically during subsequent downloads only appending new data unless
-the `resync` option is used, which will force the inventory to be rebuilt from scratch.
-
-The `update` option can be used to update downloaded files with more recent data from the server,
-but the inventory will have to be resynced, which will take a considerable time.
+By default, hdf files (version 4) are assumed as download source, which will be converted to
+`.h5` (HDF5) file unless `convert` is set to `false`.
 """
 function sftp_download(
     user::String,

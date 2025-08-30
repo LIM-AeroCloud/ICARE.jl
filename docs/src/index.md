@@ -52,6 +52,10 @@ to the `main` channel by installing _ICARE.jl_ with:
 ```@contents
 Pages = [
     "index.md",
-    "release-notes.md"
+    "download.md",
+    "adaptation.md",
+    "development.md",
+    "release-notes.md",
+    "register.md"
 ]
 ```
