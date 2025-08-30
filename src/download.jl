@@ -98,7 +98,7 @@ function sftp_download(
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
         Logging.with_logger(logger) do
-            @info "downloading '$product' data to '$productpath'"
+            @info "downloading '$product' data to '$(realpath(localroot))'"
         end
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
@@ -490,7 +490,7 @@ function convert!(
     converted!(inventory, file, convert) && return
     rm(file.location.target, force=true)
     convert_file(file.location.download, file.location.target, convert)
-    set_converted_size!(inventory, file, logger)
+    set_converted_size!(inventory, file, convert, logger)
 end
 
 
