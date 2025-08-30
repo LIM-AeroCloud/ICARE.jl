@@ -27,6 +27,7 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Pkg
+          Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git#main")
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
       - uses: julia-actions/julia-buildpkg@v1
@@ -35,7 +36,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
       - name: Run doctests
-        shell: julia --project=docs --color=yes {0} -e 'using Pkg; Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git")'
+        shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
           using ICARE
