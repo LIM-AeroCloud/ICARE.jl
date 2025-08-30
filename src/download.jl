@@ -12,7 +12,7 @@
         version::Union{Nothing,Real} = 5,
         remoteroot::String = "/SPACEBORNE/CALIOP/",
         localroot::String = ".",
-        converter::Union{Nothing,String} = "",
+        convert::Bool = true,
         resync::Bool = false,
         update::Bool = false,
         logfile::String = "downloads.log",
@@ -43,7 +43,8 @@ or a year (if both day and month are omitted).
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
 - `remoteroot::String`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
 - `localroot::String`: The root path on the local machine (default: `"."`).
-- `converter::Union{Nothing,String}`: The converter to use for the downloaded files (default: `""`).
+- `convert::Bool`: Whether to convert the downloaded files to a different format
+  (default: `true` to `.h5`).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`).
@@ -51,15 +52,10 @@ or a year (if both day and month are omitted).
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 
-For maximum flexibility to donwload formats ICARE.jl is not intended to, the `version` can be
+For maximum flexibility to download formats ICARE.jl is not intended to, the `version` can be
 set to `nothing`. Use the `product` positional argument to define the whole name of the product
 folder. By default, the product folder is constructed as `<product>.v<X.XX>` with the version as
 float with two decimal places independent of the input format.
-
-Bu default, hdf files (version 4) are assumed as download source, which will be converted to
-`.h5` (HDF5) files. The `converter` kwarg allows you to specify the path to a personalised
-conversion script to manage other file formats. If, `converter` is set to `nothing`, files
-will be downloaded from the ICARE server and the original file format is kept.
 
 # The local inventory
 
@@ -81,7 +77,7 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
-    converter::Union{Nothing,String} = "",
+    convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
     logfile::String = "downloads.log",
@@ -102,7 +98,7 @@ function sftp_download(
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
         Logging.with_logger(logger) do
-            @info "downloading '$product' data to '$productpath'"
+            @info "downloading '$product' data to '$(realpath(localroot))'"
         end
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
@@ -115,7 +111,7 @@ function sftp_download(
         inventory = OrderedDict{String,Any}()
         # Get available server dates
         try
-            product_database!(icare, inventory, localroot, product, daterange, resync, logger)
+            product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
             Logging.with_logger(logger) do
                 te = Dates.now()
                 @info "setup of database completed in $(Dates.canonicalize(te - ts))) @$te"
@@ -125,6 +121,7 @@ function sftp_download(
                 @error "failed to load local inventory" error
             end
             save_inventory(inventory, ts)
+            @error "failed to load local inventory" _module=nothing _file=nothing _line=nothing
             return
         end
         # Log download session
@@ -140,10 +137,12 @@ function sftp_download(
         #* Download missing data from server
         @info "downloading data from ICARE server"
         @info("up to $(Threads.nthreads()) parallel downloads available\n"*
-            "start julia with `julia -t <number>` to change `<number>` of parallel downloads")
+            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
         counter = Counter()
         # Match folder structure with server
-        try sync!(icare, inventory, daterange, converter, update, resync, logger, logio, counter)
+        try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
+        catch
+            @error "failed to sync with ICARE server" _module=nothing _file=nothing _line=nothing
         finally
             #* Log end of download session and save inventory
             save_inventory(inventory, t0)
@@ -288,7 +287,7 @@ end
         icare::SFTP.Client,
         inventory::OrderedDict,
         daterange::@NamedTuple{start::Date, stop::Date},
-        converter::String,
+        convert::Bool,
         update::Bool,
         resync::Bool,
         logger::Logging.ConsoleLogger,
@@ -297,9 +296,8 @@ end
     )
 
 Synchronize the files for the selected `daterange` from the `icare` server with the local system.
-Use the `converter` to change the file format.
-If set, `update` files to the latest version available on the server. Dates and files are
-compared to the `inventory` and the `inventory` is updated, if necessary.
+If set, `update` and `convert` files to the latest version available on the server and a predefined
+file format. Dates and files are compared to the `inventory` and the `inventory` is updated, if necessary.
 Increase the respective counter for each sync action and log `logger` events to a log file
 in the `logio` I/O stream.
 """
@@ -307,7 +305,7 @@ function sync!(
     icare::SFTP.Client,
     inventory::OrderedDict,
     daterange::@NamedTuple{start::Date, stop::Date},
-    converter::Union{Nothing,String},
+    convert::Bool,
     update::Bool,
     resync::Bool,
     logger::Logging.ConsoleLogger,
@@ -315,17 +313,9 @@ function sync!(
     counter::Counter
 )::Nothing
     #* Define all files for download
-    converter = converterpath(converter)
     dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
-    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, converter)
+    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, convert)
         for date in dates]...)
-    Logging.with_logger(logger) do
-        if isempty(converter)
-            @info "no file conversion after download"
-        else
-            @info "file conversion to new format for all downloads" converter
-        end
-    end
 
     prog = pm.Progress(length(files), desc="downloading...")
     @threads for file in files
@@ -347,7 +337,7 @@ function sync!(
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
-            convert!(inventory, file, converter, logger)
+            convert!(inventory, file, convert, logger)
         catch error
             lock(thread) do
                 #* Log download errors
@@ -367,7 +357,7 @@ function sync!(
             update_stats!(icare, inventory, file, resync, logger)
             try
                 download(icare, inventory, file, update)
-                convert!(inventory, file, converter, logger)
+                convert!(inventory, file, convert, logger)
             catch error
                 lock(thread) do
                     #* Log second download attempt errors
@@ -386,8 +376,7 @@ function sync!(
         #* Clean-up
         if downloaded(inventory, file, update)
             # Remove original downloads unless no conversion is selected or original file already existed
-            orig &= filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
-            isempty(converter) || orig || rm(file.location.download, force=true)
+            !convert || orig || rm(file.location.download, force=true)
             # Log download success
             t1 = Dates.now()
             if orig
@@ -485,38 +474,38 @@ end
     convert!(
         inventory::OrderedDict,
         file::File,
-        converter::String,
+        convert::Bool,
         logged::Logging.ConsoleLogger
     )
 
-Convert the `file` to a new file format using the `converter` script unless `file` is already
-up-to-date. Log events to `logger`.
+Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
+up-to-date or it was opted out to `convert` the file. Log events to `logger`.
 """
 function convert!(
     inventory::OrderedDict,
     file::File,
-    converter::String,
+    convert::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
-    converted!(inventory, file, converter) && return
+    converted!(inventory, file, convert) && return
     rm(file.location.target, force=true)
-    run(`julia $converter $(file.location.download)`)
-    set_converted_size!(inventory, file, logger)
+    convert_file(file.location.download, file.location.target, convert)
+    set_converted_size!(inventory, file, convert, logger)
 end
 
 
 """
-    converted!(inventory::OrderedDict, file::File, converter::String) -> Bool
+    converted!(inventory::OrderedDict, file::File, convert::Bool) -> Bool
 
-Check, whether the size of the converted `file` is known in the `data` dictionary and matches the
-actual file size. Return also `true`, if no `converter` is selected.
+Check, whether the size of the converted `file` is known in the `inventory` and matches the
+actual file size. Return also `true`, if it was opted out to `convert` the file.
 """
-function converted!(inventory::OrderedDict, file::File, converter::String)::Bool
+function converted!(inventory::OrderedDict, file::File, convert::Bool)::Bool
     if haskey(inventory["dates"][file.date][file.name], "converted")
         # Compare file size with inventory
         inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
     else
-        return isempty(converter)
+        return !convert
     end
 end
 
@@ -525,6 +514,7 @@ end
     set_converted_size!(
         inventory::OrderedDict,
         file::File,
+        convert::Bool,
         logger::Logging.ConsoleLogger
     )
 
@@ -534,9 +524,11 @@ Log events to `logger`.
 function set_converted_size!(
     inventory::OrderedDict,
     file::File,
+    convert::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
     # Initial checks
+    convert || return
     haskey(inventory["dates"][file.date][file.name], "converted") && return
     if !isfile(file.location.target)
         lock(thread) do
@@ -554,25 +546,6 @@ function set_converted_size!(
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
     return
-end
-
-
-"""
-    converterpath(converter::Union{Nothing,String}) -> String
-
-Return the path to the converter script for file format conversion.
-If `converter` is `nothing`, return an empty string.
-If `converter` is an empty string, return the default path to the converter script.
-If `converter` is a string, return it or throw an error for invalid paths.
-"""
-function converterpath(converter::Union{Nothing,String})::String
-    if isnothing(converter)
-        ""
-    elseif isempty(converter)
-        realpath(joinpath(@__DIR__, "..", "data", "h4toh5.jl"))
-    else
-        realpath(converter)
-    end
 end
 
 

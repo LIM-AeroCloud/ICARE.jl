@@ -73,25 +73,26 @@ Counter(;downloads::Int=0, conversions::Int=0, skipped::Int=0, failed::Int=0)::C
         inventory::OrderedDict,
         date::Date,
         name::String,
-        converter::String
+        convert::Bool
     ) -> File
 
 Constructor for a `File` struct with fields for  the file `name`, `ext`ension, `location`
 (including `target`, `download`, and `remote` location) and `dir`ectory (`dst` and `src`);
 `location` includes the file name, `dir` does not.
+The target extensions are based on the option to `convert` files to a new format.
 """
 function File(
     icare::SFTP.Client,
     inventory::OrderedDict,
     date::Date,
     name::String,
-    converter::String
+    convert::Bool
 )::File
     datadir = Dates.format.(date, ["yyyy", "yyyy_mm_dd"])
     path = mkpath(joinpath(inventory["metadata"]["local"]["path"], datadir...))
     ext = inventory["metadata"]["file"]["ext"]
     download = joinpath(path, name*ext)
-    target = isempty(converter) ? download : splitext(download)[1]*".h5"
+    target = splitext(download)[1]*newext(inventory, convert)
     remote = joinpath(icare.uri, datadir..., name*ext).path
     File(name, ext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
 end

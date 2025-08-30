@@ -408,6 +408,44 @@ credentials(user::String, password::String)::Bool = !isempty(user) && !isempty(p
 #* Conversion routines
 
 """
+    convert_file(input::String, output::String[, convert::Bool])
+
+Convert the `input` to the `output` format unless `convert` is `false` (if provided).
+Both `input` and `output` can be absolute or relative paths.
+"""
+function convert_file end
+
+function convert_file(input::String, output::String, convert::Bool)::Nothing
+    convert || return
+    convert_file(input, output)
+end
+
+function convert_file(input::String, output::String)::Nothing
+    # Return, if input file doesn't exist
+    isfile(input) || return
+    # Ensure, h5 file does not exist before conversion
+    rm(splitext(input)[1]*".h5", force=true)
+    # Chose exe for current OS and convert to h5
+    bin = Sys.isapple() ? "h4toh5_mac" : "h4toh5_linux"
+    converter = realpath(joinpath(@__DIR__, "..", "assets", bin))
+    run(`$converter $input $output`)
+    return
+end
+
+
+"""
+    newext([inventory::OrderedDict, convert::Bool]) -> String
+
+Return the extension of the converted file format or the original file extension from the `inventory`,
+when `convert` is `false` (no conversion). If no arguments are provided, return the default
+extension of the converted file format.
+"""
+function newext end
+newext(inventory::OrderedDict, convert::Bool)::String = convert ? newext() : inventory["metadata"]["file"]["ext"]
+newext()::String = ".h5"
+
+
+"""
     convert_hdffile!(
         inventory::OrderedDict,
         file::String,
