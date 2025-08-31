@@ -39,9 +39,22 @@ lines = readlines(changelog)
 i = findfirst(isequal("## [unreleased]"), lowercase.(lines))
 if isnothing(i)
     throw(ArgumentError("No unreleased version found in changelog"))
-else
-    lines[i] = "## [v$version] - $(Dates.today())"
-    open(changelog, "w+") do io
-        println.(io, lines)
-    end
+end
+lines[i] = "## [v$version] - $(Dates.today())"
+open(changelog, "w+") do io
+    println.(io, lines)
+end
+
+# Update version badge
+badge = joinpath(@__DIR__, "..", "docs", "src", "assets", "badge.svg")
+lines = readlines(badge)
+i = findfirst(contains(r"<text.*>v"), lines)
+if isnothing(i)
+    throw(ArgumentError("No version in badge found in docs/src/assets/badge.svg"))
+end
+m = findfirst(">v", lines[i])[2]
+n = findfirst("</text>", lines[i])[1]
+lines[i] = lines[i][1:m] * version * lines[i][n:end]
+open(badge, "w+") do io
+    println.(io, lines)
 end
