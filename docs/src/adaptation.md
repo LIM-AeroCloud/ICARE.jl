@@ -56,3 +56,10 @@ end
 
 sftp_download("user", "password", "product", 20200220)
 ```
+
+The function signatures of the default functions are these:
+
+```@docs
+ICARE.convert_file
+ICARE.newext
+```

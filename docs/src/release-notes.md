@@ -11,11 +11,13 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
-- Use a local `inventory.yaml` to store stats of the server-side file structure
+- Use a local `.inventory.yaml` to store stats of the server-side file structure
   in the root of the product folder and reduce communication with the server
 - Support of parallel downloads
 - Support of file format conversions with focus on HDF4 > HDF5
 - Add routines just for conversions of local downloads
+- Add Documenter documentation page and this CHANGELOG (release notes)
+- Add GitHub workflows for CI/CD
 
 ### Changed
 
@@ -23,6 +25,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Complete refactoring of the code, simplify download and restart routines
 - Improved logging
 - Reorganise downloads in a single loop
+- Conversion routines are now directly included in the code and not called as script with the
+  `run` command; they may be overloaded with custom routines for other conversions
 
 ## [v0.4.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0)
 
