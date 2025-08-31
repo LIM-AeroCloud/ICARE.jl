@@ -6,12 +6,11 @@ ICARE.jl
 A Julia package for retrieving data from the
 [AERIS/ICARE server](https://www.icare.univ-lille1.fr/).
 
-<a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.0">
-<img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a>
+| **Release** | **Documentation**                                                                  | **Build Status**                                                          |
+|:----------------------------------------------------------------------------------:|:-------------------------------------------------------------------------:|:---:|
+| <a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.0"><img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a> | [![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url] | [![Build Status][CI-img]][CI-url] [![Coverage][codecov-img]][codecov-url] |
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://LIM-AeroCloud.github.io/ICARE.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://LIM-AeroCloud.github.io/ICARE.jl/dev/)
-
-Use function `sftp_download` to retrieve missing data files in a specified time frame.
+Use function `ICARE_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
 data that has a root folder in the format `<product>.v<major>.<minor>` and a subfolder
 structure of years and dates like this: `yyyy/yyyy_mm_dd`.
@@ -175,3 +174,15 @@ following levels exist, and can be specified with the `loglevel` keyword as `Sym
 - `:Warn`: Warnings and errors are shown.
 - `:Info`: Info messages are shown additionally.
 - `:Debug`: All log messages are shown.
+
+[docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
+[docs-stable-url]: https://LIM-AeroCloud.github.io/ICARE.jl/stable/
+
+[docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
+[docs-dev-url]: https://LIM-AeroCloud.github.io/ICARE.jl/dev/
+
+[CI-img]: https://github.com/LIM-AeroCloud/ICARE.jl/actions/workflows/CI.yml/badge.svg?branch=dev
+[CI-url]: https://github.com/LIM-AeroCloud/ICARE.jl/actions/workflows/CI.yml?query=branch%3Adev
+
+[codecov-img]: https://codecov.io/gh/LIM-AeroCloud/ICARE.jl/branch/dev/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/LIM-AeroCloud/ICARE.jl
