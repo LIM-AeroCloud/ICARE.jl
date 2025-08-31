@@ -114,7 +114,23 @@ in the log file. The `Debug` level is used to inform about completed downloads.
 
 ## Converting data files
 
-Routines related to file conversion without download from the AERIS/ICARE server are currently
+### During download
+
+During an `sftp_download`, you can set the `convert` keyword argument to `true`. By default,
+this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4 (`.hdf`) format.
+You can overload the [`ICARE.convert_file`](@ref) function, see section about
+[Converting to other file formats](@ref). However, only one or the other format will be saved.
+
+!!! tip
+    If, you want both formats saved on your local machine, download the original format with
+    `sftp_download` by setting `convert` to `false` and re-run `sftp_download` with `convert=true`.
+    The second run will only convert the files without re-downloading them and also keep the
+    original downloads. If your run `sftp_download` with `convert=true` the first time, original
+    downloads are not kept.
+
+### Separate file conversions
+
+Routines related to file conversion without download from the AERIS/ICARE server are
 being refactored. **They may or may not work at current.**
 
 ```@docs
