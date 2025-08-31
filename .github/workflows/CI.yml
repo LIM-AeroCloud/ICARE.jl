@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - dev
+      - '**'
+      - '!gh-pages'
     tags: ['*']
   pull_request:
   workflow_dispatch:
