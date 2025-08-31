@@ -7,7 +7,7 @@ EditURL = "https://github.com/LIM-AeroCloud/ICARE.jl/blob/master/CHANGELOG.md"
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [UNRELEASED]
+## [v0.5.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.0) - 2025-08-31
 
 ### Added
 
@@ -18,6 +18,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Add routines just for conversions of local downloads
 - Add Documenter documentation page and this CHANGELOG (release notes)
 - Add GitHub workflows for CI/CD
+- Add Makefile and release-scripts for automated release processes
 
 ### Changed
 
@@ -28,13 +29,13 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Conversion routines are now directly included in the code and not called as script with the
   `run` command; they may be overloaded with custom routines for other conversions
 
-## [v0.4.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0)
+## [v0.4.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0) - 2021-08-04
 
 ### Changed
 
 - Use `Int` to define start/end dates or periods for downloads
 
-## [v0.3.3](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.3)
+## [v0.3.3](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.3) - 2021-05-17
 
 ### Added
 
@@ -45,20 +46,20 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 - Better error handling
 
-## [v0.3.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.2)
+## [v0.3.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.2) - 2021-04-22
 
 ### Changed
 
 - Update package dependencies
 - Internal refactoring for changes in `CSV.read`
 
-## [v0.3.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.1)
+## [v0.3.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.1) - 2021-04-21
 
 ### Added
 
 - Checks for product name and version number
 
-## [v0.3.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.0)
+## [v0.3.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.0) - 2020-04-14
 
 ### Added
 
@@ -69,7 +70,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 - Update log file format
 
-## [v0.2.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.2)
+## [v0.2.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.2) - 2020-04-07
 
 ### Added
 
@@ -79,13 +80,13 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 - Fix corrupted Project.toml
 
-## [v0.2.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.1)
+## [v0.2.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.1) - 2020-04-06
 
 ### Added
 
 - New option `none` to remove no displaced files
 
-## [v0.2.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.0)
+## [v0.2.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.2.0) - 2020-04-06
 
 ### Added
 
@@ -95,13 +96,13 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 - Revised FTP connection and download of files
 
-## [v0.1.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.2)
+## [v0.1.2](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.2) - 2020-04-05
 
 ### Added
 
 - Add `Logging` as dependency
 
-## [v0.1.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.1)
+## [v0.1.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.1) - 2020-03-30
 
 ### Added
 
@@ -118,7 +119,7 @@ rather than relative paths
 - Reconnect to ICARE and create a new FTP object for every subfolder to
 prevent LibCurl error 9
 
-## [v0.1.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.0)
+## [v0.1.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.1.0) - 2020-03-30
 
 ### Added
 
