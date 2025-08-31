@@ -52,9 +52,19 @@ i = findfirst(contains(r"<text.*>v"), lines)
 if isnothing(i)
     throw(ArgumentError("No version in badge found in docs/src/assets/badge.svg"))
 end
-m = findfirst(">v", lines[i])[2]
-n = findfirst("</text>", lines[i])[1]
-lines[i] = lines[i][1:m] * version * lines[i][n:end]
+lines[i] = replace(lines[i], r">v[0-9.]+" => ">v$version")
 open(badge, "w+") do io
+    println.(io, lines)
+end
+
+# Update link to stable version in README
+readme = joinpath(@__DIR__, "..", "README.md")
+lines = readlines(readme)
+i = findfirst(contains("/v"), lines)
+if isnothing(i)
+    throw(ArgumentError("No version link found in README.md"))
+end
+lines[i] = replace(lines[i], r"/v[0-9.]+" => "/v$version")
+open(readme, "w+") do io
     println.(io, lines)
 end
