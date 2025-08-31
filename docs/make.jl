@@ -30,6 +30,7 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/LIM-AeroCloud/ICARE.jl.git",
-    devbranch="dev"
+    repo = "github.com/<OWNER>/<REPO>.jl",  # e.g. "github.com/LIM-AeroCloud/ICARE.jl"
+    devbranch = "dev",                      # your primary development branch
+    push_preview = true,                    # enable previews for branches/PRs
 )
