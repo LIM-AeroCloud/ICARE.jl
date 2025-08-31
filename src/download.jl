@@ -86,7 +86,7 @@ function sftp_download(
     # Convert integer dates to dates
     startdate, enddate = convertdates(startdate, enddate)
     daterange = (start = startdate, stop = enddate)
-    # Enforce database updatee, if file update is selected
+    # Enforce database update, if file update is selected
     resync |= update
     #* Start logging
     logfile, level = init_logging(logfile, productpath, loglevel)
@@ -100,7 +100,7 @@ function sftp_download(
         # Get connection to server, go to product folder on remote
         ts = Dates.now()
         Logging.with_logger(logger) do
-            @info "initialising databse @$ts"
+            @info "initialising database @$ts"
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block
@@ -345,10 +345,8 @@ function sync!(
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            lock(thread) do
-                icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
-                    inventory["metadata"]["server"]["product"], logger)
-            end
+            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
+                inventory["metadata"]["server"]["product"], logger)
             # Check for correct server-side file stats
             update_stats!(icare, inventory, file, resync, logger)
             try

@@ -331,9 +331,9 @@ function update_stats!(
     # Set file sizes of possible obsolete files to zero, but keep files as reference
     obsolete = setdiff(inventory["dates"][file.date].keys, names)
     lock(thread) do
-        for file in obsolete
-            inventory["dates"][file.date][file]["size"] = 0
-            delete!(inventory["dates"][file.date][file], "converted")
+        for obsolete_file in obsolete
+            inventory["dates"][file.date][obsolete_file]["size"] = 0
+            delete!(inventory["dates"][file.date][obsolete_file], "converted")
         end
         if !isempty(obsolete)
             Logging.with_logger(logger) do
