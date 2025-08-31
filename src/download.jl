@@ -345,10 +345,8 @@ function sync!(
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            lock(thread) do
-                icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
-                    inventory["metadata"]["server"]["product"], logger)
-            end
+            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
+                inventory["metadata"]["server"]["product"], logger)
             # Check for correct server-side file stats
             update_stats!(icare, inventory, file, resync, logger)
             try
