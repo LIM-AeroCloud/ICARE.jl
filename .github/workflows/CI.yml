@@ -24,9 +24,12 @@ jobs:
           version: '1'
       - uses: julia-actions/cache@v2
       - name: Configure doc environment
-        shell: julia --project=docs --color=yes {0}
+        shell: julia --project --color=yes {0}
         run: |
           using Pkg
+          Pkg.rm("SFTP")
+          Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl.git#main")
+          Pkg.activate("docs")
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
       - uses: julia-actions/julia-buildpkg@v1
