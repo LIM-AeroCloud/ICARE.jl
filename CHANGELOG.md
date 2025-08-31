@@ -7,7 +7,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
-- Automatically update version number in badge in README with new releases
+- Automatically update version number in the badge in the README and the link to the latest stable
+  during pre-release
 
 ## [v0.5.0] - 2025-08-31
 

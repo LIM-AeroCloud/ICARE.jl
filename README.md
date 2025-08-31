@@ -6,7 +6,7 @@ ICARE.jl
 A Julia package for retrieving data from the
 [AERIS/ICARE server](https://www.icare.univ-lille1.fr/).
 
-<a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0">
+<a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.0">
 <img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a>
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://LIM-AeroCloud.github.io/ICARE.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://LIM-AeroCloud.github.io/ICARE.jl/dev/)
