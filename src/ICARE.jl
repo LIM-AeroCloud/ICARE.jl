@@ -8,22 +8,28 @@ CALIOP data files in a specified time frame.
 module ICARE
 
 # Import Julia Packages and Types
-import FTPClient; const ftp = FTPClient
-import ProgressMeter; const pm = ProgressMeter
-import Logging; const logg = Logging
+import SFTP
+import SFTP: Downloads.RequestError
+import ProgressMeter as pm
 import Dates
-import Dates: Date
+import Dates: Date, DateTime
+import YAML
+import Logging
+import OrderedCollections: OrderedDict
 import Printf: @sprintf
-import CSV
-import DataFrames; const df = DataFrames
-import DataFrames: DataFrame
+import Base.Threads: @threads
+
+# global thread lock
+const thread = ReentrantLock()
 
 # Export functions
-export ftp_download
-
+export sftp_download, hdfupgrade
 
 # Include source files
+include("types.jl") # types and exceptions
+include("inventory.jl") # routines related to the local inventory
 include("download.jl") # routines related to syncing with ICARE
-include("restart.jl")  # routines related to restarting a previous session
+include("conversion.jl") # routines related to hdf4 > hdf5 conversion
+# TODO include("sync.jl") # routines related to syncing local and remote directories
 
 end #module ICARE
