@@ -86,7 +86,7 @@ function sftp_download(
     # Convert integer dates to dates
     startdate, enddate = convertdates(startdate, enddate)
     daterange = (start = startdate, stop = enddate)
-    # Enforce database updatee, if file update is selected
+    # Enforce database update, if file update is selected
     resync |= update
     #* Start logging
     logfile, level = init_logging(logfile, productpath, loglevel)
@@ -100,7 +100,7 @@ function sftp_download(
         # Get connection to server, go to product folder on remote
         ts = Dates.now()
         Logging.with_logger(logger) do
-            @info "initialising databse @$ts"
+            @info "initialising database @$ts"
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block

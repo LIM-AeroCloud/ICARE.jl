@@ -12,7 +12,7 @@ Changelog.generate(
 makedocs(
     # modules=[ICARE],
     authors="Peter Bräuer <pb866.git@gmail.com> and contributors",
-    sitename="ICARE.jl Documentation",
+    sitename="Documentation",
     checkdocs=:public,
     format=Documenter.HTML(;
         prettyurls=false,
