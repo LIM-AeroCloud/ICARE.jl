@@ -21,7 +21,6 @@ end
 # Run tests
 @testset "ICARE_USER secret test" begin
     mktempdir() do root
-        @show root
         cp("data/05kmCPro.v4.51/", joinpath(root, "05kmCPro.v4.51/"), force=true)
         ICARE.sftp_download(user, password, "05kmCPro", 20060612, localroot = root, convert=false)
         ICARE.sftp_download(user, password, "05kmCPro", 20060612, localroot = root)
