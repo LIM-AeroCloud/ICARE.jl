@@ -37,6 +37,11 @@ jobs:
           - x64
     steps:
       - uses: actions/checkout@v5
+      - name: Add sftp.icare.univ-lille.fr to known_hosts
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H -t rsa,ecdsa,ed25519 sftp.icare.univ-lille.fr >> ~/.ssh/known_hosts
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
@@ -70,6 +75,11 @@ jobs:
       statuses: write
     steps:
       - uses: actions/checkout@v5
+      - name: Add sftp.icare.univ-lille.fr to known_hosts
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H -t rsa,ecdsa,ed25519 sftp.icare.univ-lille.fr >> ~/.ssh/known_hosts
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
