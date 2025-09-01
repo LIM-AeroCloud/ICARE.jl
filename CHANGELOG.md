@@ -5,6 +5,10 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## [UNRELEASED]
 
+### Added
+
+- Add unit tests and code coverage
+
 ### Fixed
 
 - Automatically update version number in the badge in the README and the link to the latest stable

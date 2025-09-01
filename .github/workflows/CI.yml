@@ -44,6 +44,8 @@ jobs:
       - name: Setup Julia environment
         env:
           JULIA_NUM_THREADS: 2
+          ICARE_USER: ${{ secrets.ICARE_USER }}
+          ICARE_PASSWORD: ${{ secrets.ICARE_PASSWORD }}
         shell: julia --project --color=yes {0}
         run: |
           using Pkg
