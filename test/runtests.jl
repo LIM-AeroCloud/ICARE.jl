@@ -1,5 +1,16 @@
 using Test, ICARE
 
+# Copy keyscan to known_hosts file for CI
+sshdir = joinpath(homedir(), ".ssh")
+known_hosts = joinpath(sshdir, "known_hosts")
+if !isfile(known_hosts)
+    mkpath(sshdir)
+    open(known_hosts, "w+") do f
+        println(f, "sftp.icare.univ-lille.fr ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBCzbaoZyPfXy2USCX3E+cPlKhQbrRowC27frEcz9hB6tBy5xH+9eRpp/M6atdZ8MK5UjZidFCqGQKxnwN487+Xs=")
+    end
+end
+
+# Get user credentials as secrets
 user = get(ENV, "ICARE_USER", nothing)
 password = get(ENV, "ICARE_PASSWORD", nothing)
 
