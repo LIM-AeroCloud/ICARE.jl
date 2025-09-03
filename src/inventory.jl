@@ -240,7 +240,7 @@ function newext!(inventory::OrderedDict, convert::Bool)::Nothing
         # Save extension for conversion in inventory, if not done before
         new_ext = target
         @warn "newext" inventory["metadata"]["file"]["newext"] new_ext
-    elseif target == new_ext
+    elseif target ≠ new_ext
         # Check previous extensions are consistent with current conversions
         throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
             "(current: $new_ext, target: $target)"))
