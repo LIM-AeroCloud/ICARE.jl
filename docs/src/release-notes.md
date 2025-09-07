@@ -7,7 +7,7 @@ EditURL = "https://github.com/LIM-AeroCloud/ICARE.jl/blob/master/CHANGELOG.md"
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [UNRELEASED]
+## [v0.5.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.1) - 2025-09-07
 
 ### Fixed
 
