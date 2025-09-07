@@ -9,6 +9,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 - Automatically update version number in the badge in the README and the link to the latest stable
   during pre-release
+- Fixed an issue with the setup of the target extension that lead to errors during download sessions
+  with conversions
 
 ## [v0.5.0] - 2025-08-31
 
