@@ -3,6 +3,15 @@
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.5.1] - 2025-09-07
+
+### Fixed
+
+- Automatically update version number in the badge in the README and the link to the latest stable
+  during pre-release
+- Fixed an issue with the setup of the target extension that lead to errors during download sessions
+  with conversions
+
 ## [v0.5.0] - 2025-08-31
 
 ### Added
@@ -136,3 +145,4 @@ prevent LibCurl error 9
 [v0.3.3]: https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.3.3
 [v0.4.0]: https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.4.0
 [v0.5.0]: https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.0
+[v0.5.1]: https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.1

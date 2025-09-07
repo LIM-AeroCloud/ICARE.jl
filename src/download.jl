@@ -495,7 +495,7 @@ Check, whether the size of the converted `file` is known in the `inventory` and 
 actual file size. Return also `true`, if it was opted out to `convert` the file.
 """
 function converted!(inventory::OrderedDict, file::File, convert::Bool)::Bool
-    if haskey(inventory["dates"][file.date][file.name], "converted")
+    if convert && haskey(inventory["dates"][file.date][file.name], "converted")
         # Compare file size with inventory
         inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
     else
