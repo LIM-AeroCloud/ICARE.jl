@@ -11,8 +11,8 @@ way that should allow downloads of any data with a folder structure:
     <root path>/<main product folder>/yyyy/yyyy_mm_dd
 
 Furthermore, _ICARE.jl_ allows the upgrade of HDF4 file format used in the ICARE database to
-HDF5 or any user defined conversions. Parallel downloads are possible by starting julia with
-multiple threads:
+HDF5 or any user defined conversions (see [Converting to other file formats](@ref)).
+Parallel downloads are possible by starting julia with multiple threads:
 
     julia --threads auto
 
@@ -38,14 +38,9 @@ scientific use only.
 ## Installation
 
 _ICARE.jl_ is an unregistered Julia package, but can be installed with the package manager.
-Start the package manager by typing `]` in the REPL and add _ICARE.jl__ with:
+Start the package manager by typing `]` in the REPL and add _ICARE.jl_ with:
 
     add https://github.com/LIM-AeroCloud/ICARE.jl.git
-
-By default, the development version will be installed. To use released stable versions switch
-to the `main` channel by installing _ICARE.jl_ with:
-
-    add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
 
 ## Contents
 
