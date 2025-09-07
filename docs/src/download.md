@@ -39,13 +39,14 @@ sftp_download
 By default, CALIOP data (`/SPACEBORNE/CALIOP`) will be downloaded, but can be changed with the
 `remoteroot` keyword argument. Data will be downloaded to the current folder or the folder
 specified by `localroot`. Use the third positional argument to specify the product, you want to
-download. Products are assumed in the format `<name>.v.<X.XX>`, where `X.XX` is the version number
+download. Products are assumed in the format `<name>.v<X.XX>`, where `X.XX` is the version number
 with a two-digit minor version. By default, version `4.51` is assumed, but can be changed with
 the `version` keyword argument (e.g., upgrade to version 5 with `version=5`).
 
 !!! note
     Currently, the newest version 5 shows a significant performance decrease on the server side.
-    Therefore, version `4.51` was chosen as the current default.
+    Therefore, version `4.51` was chosen as the current default. Conversions to HDF5 format
+    are currently erroring as well with the conversion tools provided.
 
 For custom formats, `version` can be set to `nothing` and the entire name and version string
 passed to the `product` argument.
@@ -97,7 +98,7 @@ as `download_<timestamp>.log`. You can change the file name with the `logfile` k
 The file name will automatically be appended with the time stamp, when the download session
 started. If the file name includes a path, the logfile will be saved to this path. The path can
 be absolute or relative to your current location (where you started your julia session or where
-you change to during your julia session), i.e. `logfile = "~/icare.log"` will create a logfile
+you changed to during your julia session), i.e. `logfile = "~/icare.log"` will create a logfile
 `icare_<timeestamp>.log` in your root directory. Note that the extension can be change as well
 to, e.g., `.txt` or `.dat`.
 
@@ -116,17 +117,18 @@ in the log file. The `Debug` level is used to inform about completed downloads.
 
 ### During download
 
-During an `sftp_download`, you can set the `convert` keyword argument to `true`. By default,
-this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4 (`.hdf`) format.
-You can overload the [`ICARE.convert_file`](@ref) function, see section about
-[Converting to other file formats](@ref). However, only one or the other format will be saved.
+During an [`sftp_download`](@ref), you can set the `convert` keyword argument to `true`. 
+By default, this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4 
+(`.hdf`) format. You can overload the [`ICARE.convert_file`](@ref) function, see section about
+[Converting to other file formats](@ref). However, you are allowed to save only one other format.
 
 !!! tip
     If, you want both formats saved on your local machine, download the original format with
-    `sftp_download` by setting `convert` to `false` and re-run `sftp_download` with `convert=true`.
+    [`sftp_download`](@ref) by setting `convert` to `false` and re-run [`sftp_download`](@ref)
+    with `convert=true`.
     The second run will only convert the files without re-downloading them and also keep the
-    original downloads. If your run `sftp_download` with `convert=true` the first time, original
-    downloads are not kept.
+    original downloads. If your run [`sftp_download`](@ref) with `convert=true` the first time,
+    original downloads are not kept.
 
 ### Separate file conversions
 

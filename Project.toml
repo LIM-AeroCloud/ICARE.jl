@@ -13,10 +13,10 @@ SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [compat]
-Dates = "1.11"
-Logging = "1.11"
+Dates = "1.10"
+Logging = "1.10"
 OrderedCollections = "1.8"
-Printf = "1.11.0"
+Printf = "1.10"
 ProgressMeter = "1.10"
 SFTP = "0.2.1"
 YAML = "0.4.14"

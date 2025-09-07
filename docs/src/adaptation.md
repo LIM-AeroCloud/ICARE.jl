@@ -8,9 +8,9 @@ Data is in the format:
     <root>/<product>.v<Major>.<Minor>/yyyy/yyyy_mm_dd
 
 The product version consists of a single-digit major and double-digit minor version.
-HDF4 data files (`.hdf`) are located in the date folders at the lowest level. The can be
+HDF4 data files (`.hdf`) are located in the date folders at the lowest level. They can be
 converted to HDF5 format (`.h5`). All this functionality can be achieved with the
-`sftp_download` function.
+[`sftp_download`](@ref) function.
 
 !!! warning "Important notice"
     All adaptations described here should work in theory, but have never been tested in reality.
@@ -19,10 +19,10 @@ converted to HDF5 format (`.h5`). All this functionality can be achieved with th
 
 ## Use different products with the same format
 
-The AERIS/ICARE data server holds other products with the same structure; `sftp_download` can
-be directly used to download this data, by changing the `remoteroot` keyword argument to the
+The AERIS/ICARE data server holds other products with the same structure; [`sftp_download`](@ref)
+can be directly used to download this data by changing the `remoteroot` keyword argument to the
 new root path and supplying the correct `product` argument. If the data files are not in HDF4
-format or and upgrade to HDF5 is not desired, switch the `convert` keyword argument to `false`.
+format or an upgrade to HDF5 is not desired, switch the `convert` keyword argument to `false`.
 
 Some products have different version formats, but the same folder structure. For these products,
 you need to set the `version` keyword argument to `nothing` and give the complete folder name
@@ -42,7 +42,7 @@ routines with the given signature (function names, argument types and return typ
 
 In your script import (or use) the _ICARE_ package, overload the above functions (don't forget
 to prepend each function name with `ICARE.` as both functions are unexported) and call the
-`sftp_download` function. An example script can look like this:
+[`sftp_download`](@ref) function. An example script can look like this:
 
 ```julia
 using ICARE
