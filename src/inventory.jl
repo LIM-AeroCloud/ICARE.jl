@@ -230,16 +230,19 @@ Check and update the converted file extension in the inventory.
 If `convert` is `false`, the target extension is set to the original file extension.
 """
 function newext!(inventory::OrderedDict, convert::Bool)::Nothing
+    # Ingnore newext, if no conversion is requested
+    convert || return
     # Definitions
-    target = newext(inventory, convert)
+    target = newext()
     ext = inventory["metadata"]["file"]["ext"]
     new_ext = inventory["metadata"]["file"]["newext"]
     # Return, if target is identical to original extension
     target == ext && return
-    if ext == new_ext
+    if isempty(new_ext)
         # Save extension for conversion in inventory, if not done before
+        target == ext && throw(ArgumentError("conversion to the same file type ($ext) is not allowed"))
         new_ext = target
-        @warn "newext" inventory["metadata"]["file"]["newext"] new_ext
+        @info "newext" inventory["metadata"]["file"]["newext"] new_ext
     elseif target ≠ new_ext
         # Check previous extensions are consistent with current conversions
         throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
