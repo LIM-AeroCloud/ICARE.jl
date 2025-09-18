@@ -21,11 +21,12 @@ end
 struct File
 ===========
 
-Stores relevant data about file name, extension, and paths on the local and remote system.
+Stores relevant data about file name, extensions, and paths on the local and remote system.
 """
 struct File
     name::String
     ext::String
+    newext::String
     date::Date
     location::@NamedTuple{
         target::String,
@@ -70,7 +71,7 @@ Counter(;downloads::Int=0, conversions::Int=0, skipped::Int=0, failed::Int=0)::C
 """
     File(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         date::Date,
         name::String,
         convert::Bool
@@ -83,7 +84,7 @@ The target extensions are based on the option to `convert` files to a new format
 """
 function File(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     date::Date,
     name::String,
     convert::Bool
@@ -91,8 +92,9 @@ function File(
     datadir = Dates.format.(date, ["yyyy", "yyyy_mm_dd"])
     path = mkpath(joinpath(inventory["metadata"]["local"]["path"], datadir...))
     ext = inventory["metadata"]["file"]["ext"]
+    newext = inventory["metadata"]["file"]["newext"]
     download = joinpath(path, name*ext)
-    target = splitext(download)[1]*newext(inventory, convert)
+    target = splitext(download)[1]*(convert ? newext : ext)
     remote = joinpath(icare.uri, datadir..., name*ext).path
-    File(name, ext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
+    File(name, ext, newext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
 end

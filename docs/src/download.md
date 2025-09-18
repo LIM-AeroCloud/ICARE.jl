@@ -122,6 +122,12 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
 (`.hdf`) format. You can overload the [`ICARE.convert_file`](@ref) function, see section about
 [Converting to other file formats](@ref). However, you are allowed to save only one other format.
 
+!!! warning "Important Notice"
+    Data conversion is only available under Linux and MacOS, not under Windows. If you want
+    to use *ICARE.jl* under Windows with data conversion, you need to write your own conversion
+    routine and overload [`ICARE.convert_file`](@ref) and [`ICARE.newext`](@ref) (see section
+    about [Converting to other file formats](@ref)).
+
 !!! tip
     If, you want both formats saved on your local machine, download the original format with
     [`sftp_download`](@ref) by setting `convert` to `false` and re-run [`sftp_download`](@ref)

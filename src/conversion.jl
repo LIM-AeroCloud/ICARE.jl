@@ -225,7 +225,7 @@ end
       user::String,
       password::String,
       logger::Logging.ConsoleLogger
-    ) -> Tuple{Union{SFTP.Client,Nothing},OrderedDict}
+    ) -> Tuple{Union{SFTP.Client,Nothing},SortedDict}
 
 Load the inventory in the given `productfolder` of the `localroot`.
 Additionally, access ICARE server data, if the `user` name, `password`, and `remoteroot`
@@ -239,7 +239,7 @@ function load_database(
   user::String,
   password::String,
   logger::Logging.ConsoleLogger
-)::Tuple{Union{SFTP.Client,Nothing},OrderedDict}
+)::Tuple{Union{SFTP.Client,Nothing},SortedDict}
     # Setup
     icare = nothing
     productpath = joinpath(localroot, productfolder)
@@ -276,7 +276,7 @@ end
 """
     valid_dir(
         path::String,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         logger::Logging.ConsoleLogger
     ) -> Bool
 
@@ -286,7 +286,7 @@ Log events to `logger` (using `inventory` data if needed).
 """
 function valid_dir(
     path::String,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     logger::Logging.ConsoleLogger
 )::Bool
     # Analyse curent path
@@ -325,7 +325,7 @@ end
 
 """
     in_database(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         icare::SFTP.Client,
         root::String,
         path::String,
@@ -348,7 +348,7 @@ Return an error code for possible events:
 - `6`: date outside expected date range (should already be caught elsewhere)
 """
 function in_database(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     icare::SFTP.Client,
     root::String,
     path::String,
@@ -435,20 +435,16 @@ end
 
 
 """
-    newext([inventory::OrderedDict, convert::Bool]) -> String
+    newext() -> String
 
-Return the extension of the converted file format or the original file extension from the `inventory`,
-when `convert` is `false` (no conversion). If no arguments are provided, return the default
-extension of the converted file format.
+Return the extension of the converted file.
 """
-function newext end
-newext(inventory::OrderedDict, convert::Bool)::String = convert ? newext() : inventory["metadata"]["file"]["ext"]
 newext()::String = ".h5"
 
 
 """
     convert_hdffile!(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         file::String,
         path::String,
         root::String,
@@ -466,7 +462,7 @@ Handle conversions and log events to `logger` based on the given `error_code`.
 Delete HDF4 after successful conversion, if `clean` is set to `true`.
 """
 function convert_hdffile!(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     file::String,
     path::String,
     root::String,
@@ -528,7 +524,7 @@ end
 
 """
     h5upgrade!(
-      inventory::OrderedDict,
+      inventory::SortedDict,
       date::Date,
       h4file::String,
       h5file::String="";
@@ -540,7 +536,7 @@ HDF5 file to the `inventory`. Overwrite any existing `h5file`, if `force` is set
 to `true`.
 """
 function h5upgrade!(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     date::Date,
     h4file::String,
     h5file::String="";

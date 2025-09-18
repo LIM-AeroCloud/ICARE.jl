@@ -4,7 +4,7 @@ default: help
 
 docs-instantiate:
 	${EXEC} --project -e 'using Pkg; Pkg.rm("SFTP"); Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl", rev="main")'
-	${EXEC} --project=docs -e 'using Pkg; Pkg.instantiate()'
+	${EXEC} --project=docs -e 'using Pkg; Pkg.update(); Pkg.instantiate()'
 
 docs: changelog
 	${EXEC} --project=docs docs/make.jl
