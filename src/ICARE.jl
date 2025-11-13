@@ -17,10 +17,8 @@ import YAML
 import Logging
 import OrderedCollections: OrderedDict
 import Printf: @sprintf
-import Base.Threads: @threads
-
-# global thread lock
-const thread = ReentrantLock()
+import Distributed
+import Distributed: @distributed, RemoteChannel, @spawnat, nworkers, workers
 
 # Export functions
 export sftp_download, hdfupgrade

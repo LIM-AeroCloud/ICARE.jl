@@ -124,7 +124,7 @@ function sftp_download(
         t0 = Dates.now()
         Logging.with_logger(logger) do
             not = resync ? "" : " not"
-            @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
+            @info "starting up to $(nworkers()) parallel downloads @$(t0)"
             @info "files will$not be updated, if newer files are available on the server"
             flush(logio)
         end
@@ -132,8 +132,8 @@ function sftp_download(
         ## Download
         #* Download missing data from server
         @info "downloading data from ICARE server"
-        @info("up to $(Threads.nthreads()) parallel downloads available\n"*
-            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
+        @info("up to $(nworkers()) parallel downloads available\n"*
+            "start julia with `julia -p <number>` or `addprocs(<number>)` to change the `<number>` of parallel downloads")
         counter = Counter()
         # Match folder structure with server
         try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
@@ -314,89 +314,100 @@ function sync!(
         for date in dates]...)
 
     prog = pm.Progress(length(files), desc="downloading...")
-    @threads for file in files
+    
+    # Process files using distributed computing
+    results = pmap(files) do file
+        result = Dict(
+            :skipped => false,
+            :downloaded => false,
+            :converted => false,
+            :failed => false,
+            :duration => 0.0,
+            :orig => false,
+            :name => file.name
+        )
+        
         #* Check for previous downloads
         if downloaded(inventory, file, update)
-            lock(thread) do
-                #* Log skipped files
-                Logging.with_logger(logger) do
-                    @debug "skipping $(file.name), already downloaded" _module=nothing _file=nothing _line=nothing
-                end
-                counter.skipped += 1
-                flush(logio)
-            end
-            pm.next!(prog)
-            continue
+            result[:skipped] = true
+            return result
         end
+        
         t0 = Dates.now()
-        orig = isfile(file.location.download)
+        result[:orig] = isfile(file.location.download)
+        
         #* Download file and optionally convert to another format
+        local_icare = icare  # Use local copy for this worker
         try
-            download(icare, inventory, file, update)
+            download(local_icare, inventory, file, update)
             convert!(inventory, file, convert, logger)
         catch error
-            lock(thread) do
-                #* Log download errors
-                Logging.with_logger(logger) do
-                    @error "failed to download $(file.name)" error _module=nothing _file=nothing _line=nothing
-                end
-            end
+            # First attempt failed, will retry below
         end
+        
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
+            local_icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
                 inventory["metadata"]["server"]["product"], logger)
             # Check for correct server-side file stats
-            update_stats!(icare, inventory, file, resync, logger)
+            update_stats!(local_icare, inventory, file, resync, logger)
             try
-                download(icare, inventory, file, update)
+                download(local_icare, inventory, file, update)
                 convert!(inventory, file, convert, logger)
             catch error
-                lock(thread) do
-                    #* Log second download attempt errors
-                    Logging.with_logger(logger) do
-                        @error("Second download attempt failed for $(file.name); no further attempts",
-                            error, _module=nothing, _file=nothing, _line=nothing)
-                    end
-                end
-                lock(thread) do
-                    counter.failed += 1
-                end
-                throw(@error("Second download attempt failed for $(file.name); no further attempts",
-                    error, _module=nothing, _file=nothing, _line=nothing))
+                result[:failed] = true
+                return result
             end
         end
+        
         #* Clean-up
         if downloaded(inventory, file, update)
             # Remove original downloads unless no conversion is selected or original file already existed
-            !convert || orig || rm(file.location.download, force=true)
-            # Log download success
+            !convert || result[:orig] || rm(file.location.download, force=true)
+            # Calculate duration
             t1 = Dates.now()
-            if orig
-                lock(thread) do
-                    counter.conversions += 1
-                    Logging.with_logger(logger) do
-                        @debug("$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1",
-                            _module=nothing, _file=nothing, _line=nothing)
-                    end
-                end
+            result[:duration] = (t1 - t0).value / 1000.0  # Convert to seconds
+            if result[:orig]
+                result[:converted] = true
             else
-                lock(thread) do
-                    # Log successful downloads
-                    counter.downloads += 1
-                    Logging.with_logger(logger) do
-                        @debug("downloaded $(file.name) in $(Dates.canonicalize(t1 - t0)) @$t1",
-                            _module=nothing, _file=nothing, _line=nothing)
-                    end
-                end
+                result[:downloaded] = true
             end
         end
-        lock(thread) do
-            flush(logio)
+        
+        return result
+    end
+    
+    # Process results and update counters and logs
+    for (idx, result) in enumerate(results)
+        if result[:skipped]
+            Logging.with_logger(logger) do
+                @debug "skipping $(result[:name]), already downloaded" _module=nothing _file=nothing _line=nothing
+            end
+            counter.skipped += 1
+        elseif result[:failed]
+            Logging.with_logger(logger) do
+                @error("Second download attempt failed for $(result[:name]); no further attempts",
+                    _module=nothing, _file=nothing, _line=nothing)
+            end
+            counter.failed += 1
+        elseif result[:converted]
+            counter.conversions += 1
+            Logging.with_logger(logger) do
+                @debug("$(result[:name]) already downloaded; converted in $(result[:duration])s",
+                    _module=nothing, _file=nothing, _line=nothing)
+            end
+        elseif result[:downloaded]
+            counter.downloads += 1
+            Logging.with_logger(logger) do
+                @debug("downloaded $(result[:name]) in $(result[:duration])s",
+                    _module=nothing, _file=nothing, _line=nothing)
+            end
         end
-        pm.next!(prog) # Update progress meter
-    end # loop over files
+        flush(logio)
+        pm.next!(prog)
+    end
+    
     pm.finish!(prog)
 end
 
@@ -525,20 +536,16 @@ function set_converted_size!(
     convert || return
     haskey(inventory["dates"][file.date][file.name], "converted") && return
     if !isfile(file.location.target)
-        lock(thread) do
-            # Log error, if converted file does not exist
-            Logging.with_logger(logger) do
-                @error("cannot determine size of '$(file.location.target)'",
-                    _module=nothing, _file=nothing, _line=nothing)
-            end
+        # Log error, if converted file does not exist
+        Logging.with_logger(logger) do
+            @error("cannot determine size of '$(file.location.target)'",
+                _module=nothing, _file=nothing, _line=nothing)
         end
         return
     end
     # Save converted file size to inventory
-    lock(thread) do
-        inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
-        inventory["metadata"]["database"]["updated"] = Dates.now()
-    end
+    inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
+    inventory["metadata"]["database"]["updated"] = Dates.now()
     return
 end
 

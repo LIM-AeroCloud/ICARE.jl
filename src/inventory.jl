@@ -333,15 +333,13 @@ function update_stats!(
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
     obsolete = setdiff(inventory["dates"][file.date].keys, names)
-    lock(thread) do
-        for obsolete_file in obsolete
-            inventory["dates"][file.date][obsolete_file]["size"] = 0
-            delete!(inventory["dates"][file.date][obsolete_file], "converted")
-        end
-        if !isempty(obsolete)
-            Logging.with_logger(logger) do
-                @warn "resetting file stats for date $(file.date)" obsolete
-            end
+    for obsolete_file in obsolete
+        inventory["dates"][file.date][obsolete_file]["size"] = 0
+        delete!(inventory["dates"][file.date][obsolete_file], "converted")
+    end
+    if !isempty(obsolete)
+        Logging.with_logger(logger) do
+            @warn "resetting file stats for date $(file.date)" obsolete
         end
     end
     # Sort files by names (equals to time)
@@ -354,24 +352,20 @@ function update_stats!(
         dbfile = inventory["dates"][file.date][names[i]]
         if stats[i].size == dbfile["size"] &&
             (Date∘Dates.unix2datetime)(stats[i].mtime) == dbfile["mtime"]
-            lock(thread) do
-                updated = true
-                inventory["dates"][file.date][names[i]] = OrderedDict(
-                    "size" => stats[i].size,
-                    "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
-                )
-            end
+            updated = true
+            inventory["dates"][file.date][names[i]] = OrderedDict(
+                "size" => stats[i].size,
+                "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
+            )
         end
         # Compare h5 size with current conversion
         if isfile(file.location.target) && haskey(dbfile, "converted") &&
             dbfile["converted"] ≠ filesize(file.location.target)
-            lock(thread) do
-                updated = true
-                dbfile["converted"] = filesize(file.location.target)
-            end
+            updated = true
+            dbfile["converted"] = filesize(file.location.target)
         end
     end
-    updated && lock(thread) do
+    if updated
         Logging.with_logger(logger) do
             @info "updated file stats for $(file.date)"
             inventory["metadata"]["database"]["updated"] = Dates.now()
