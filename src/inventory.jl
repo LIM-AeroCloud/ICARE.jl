@@ -220,11 +220,9 @@ function sync_database!(
         folders = readdir(icare, string(year))
         dates = Date.(folders, "yyyy_mm_dd")
         isempty(dates) && continue
-        #* Loop over dates in the current year and add missing dates to inventory
-        pm.@showprogress dt=0.1 desc="$year:" for date in dates
-            updated |= new_date!(inventory, date)
-            updated |= remotefiles!(icare, inventory, date)
-        end
+        #* Scan dates in the current year
+        stats = @pm.showprogress dt = 0.1 desc = "$year" dist.pmap(date -> ICARE.scan_dates(icare, date), dates)
+        updated |= remotefiles!(inventory, stats, logger)
         # Ensure complete years get saved in the local inventory, if something during database setups happens
         updated && (inventory["metadata"]["database"]["updated"] = Dates.now())
         inventory["metadata"]["database"]["start"] = minimum(keys(inventory["dates"]))
@@ -276,52 +274,82 @@ end
 
 """
     remotefiles!(
-        icare::SFTP.Client,
         inventory::SortedDict,
-        date::Date
+        stats::Vector{Pair{Date,Vector{NamedTuple{(:name, :size, :mtime),Tuple{String,Int,Date}}}}},
+        logger::Logging.ConsoleLogger
     ) -> Bool
 
-Add file stats for all granules of the `date` based on the `icare` server data. File stats are
-only added for dates with no file data. Indicate updates in the `inventory` by the returned `Bool`.
+Add new file `stats` to the dates of the `inventory` and indicate updates by the returned `Bool`.
+Log events to `logger`.
 """
 function remotefiles!(
-    icare::SFTP.Client,
     inventory::SortedDict,
-    date::Date
+    stats::Vector{Pair{Date,Vector{NamedTuple{(:name, :size, :mtime),Tuple{String,Int,Date}}}}},
+    logger::Logging.ConsoleLogger
 )::Bool
-    # Entry checks
-    date in inventory["gaps"] && return false
-    isempty(inventory["dates"][date]) || return false
+    updated = false
     # Get stats of remote files (without the current and parent folders)
-    stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
     for stat in stats
-        desc = splitext(stat.desc)[1]
-        inventory["dates"][date][desc] = SortedDict(
-            "size" => stat.size,
-            "mtime" => Date(Dates.unix2datetime(stat.mtime))
-        )
-        # Restore converted file sizes during resynchronisaton
-        haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
-            (inventory["dates"][date][desc]["size"*inventory["metadata"]["file"]["newext"]] =
-                inventory["temp"][desc])
+        # Entry checks for current date
+        if !haskey(inventory["dates"], stat.date)
+            inventory["dates"][stat.date] = SortedDict{String,SortedDict}()
+            updated = true
+        end
+        if stat.date in inventory["gaps"]
+            filter!(!isequal(stat.date), inventory["gaps"])
+            updated = true
+        end
+        # Get new file stats
+        desc = setdiff!(keys(stat.granules), keys(inventory["dates"][stat.date]))
+        for d in desc
+            inventory["dates"][stat.date][d] = stat.granules[d]
+            updated = true
+            # Restore converted file sizes during resynchronisation
+            haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
+                (inventory["dates"][stat.date][d]["size"*inventory["metadata"]["file"]["newext"]] =
+                    inventory["temp"][d])
+        end
     end
     # Update inventory metadata
     file = inventory["metadata"]["file"]
-    isempty(file["ext"]) && (file["ext"] = splitext(stats[1].desc)[2])
-    return true
+    if isempty(file["ext"])
+        ext = filter(!isempty, [s.ext for s in stats]) |> unique
+        if length(ext) ≠ 1
+            @error "could not unambiguously determine remote file extension" ext
+            with_logger(logger) do
+                @error "could not unambiguously determine remote file extension" ext
+            end
+        else
+            file["ext"] = ext[1]
+        end
+    end
+    return updated
 end
 
 
 """
-    new_date!(inventory::SortedDict, date::Date) -> Bool
+    scan_dates(
+        icare::SFTP.Client,
+        date::Date
+    ) -> NamedTuple{(:date, :granules, :ext),Tuple{Date,SortedDict{String,SortedDict},String}}
 
-Add the given `date` to the `inventory`, if missing.
-Return `true`, if the `date` was added, otherwise `false`.
+Scan the `icare` server for files on the given `date`.
+Return a `NamedTuple` with the `date`, a `SortedDict` of `granules` (with file stats)
+and the common remote file `ext`.
 """
-function new_date!(inventory::SortedDict, date::Date)::Bool
-    haskey(inventory["dates"], date) && return false
-    inventory["dates"][date] = SortedDict{String,SortedDict}()
-    return true
+function scan_dates(
+    icare::SFTP.Client,
+    date::Date
+)::NamedTuple{(:date, :granules, :ext),Tuple{Date,SortedDict{String,SortedDict},String}}
+    stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
+    isempty(stats) && return (;date, data=SortedDict{String,SortedDict}(), ext = "")
+    data = SortedDict{String,SortedDict}(
+        splitext(s.desc)[1] => SortedDict(
+            "size" => s.size,
+            "mtime" => Date(Dates.unix2datetime(s.mtime))
+        ) for s in stats
+    )
+    return (;date, granules=data, ext=splitext(stats[1].desc)[2])
 end
 
 

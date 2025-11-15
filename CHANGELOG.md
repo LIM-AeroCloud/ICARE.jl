@@ -8,11 +8,12 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 ## Added
 
 - Improved error handling during download
+- Give inventory a version number, set to `1.0.0`
 
 ## Changed
 
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
-  change depencies from `OrderedCollections` to `DataStructures` ([#18])
+  change dependencies from `OrderedCollections` to `DataStructures` ([#18])
 - **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
   file sizes of the original format and the size of already converted files; add a `version`
   number to `metadata` to allow better tracking of changes in the inventory ([#18])

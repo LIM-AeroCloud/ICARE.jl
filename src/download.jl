@@ -76,6 +76,7 @@ function sftp_download(
     convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
+    parallel::Int = Sys.CPU_THREADS,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
 )::Nothing
@@ -99,13 +100,17 @@ function sftp_download(
             @info "downloading '$product' data to '$(realpath(localroot))' for $range"
         end
         #* Syncing local and remote database
+        # Set up dist workers for parallel downloads
+        distribute(parallel, logger)
         # Get connection to server, go to product folder on remote
         ts = Dates.now()
         Logging.with_logger(logger) do
             @info "initialising database @$ts"
         end
-        icare = icare_connect(user, password, remoteroot, product, logger)
-        # ℹ Make inventory available for catch block
+        Base.eval(Main,
+            :(ICARE.@everywhere icare = ICARE.icare_connect($user, $password, $remoteroot, $product, $logger)))
+        @show icare
+            # ℹ Make inventory available for catch block
         inventory = SortedDict{String,Any}()
         # Get available server dates
         try
@@ -127,7 +132,7 @@ function sftp_download(
         t0 = Dates.now()
         Logging.with_logger(logger) do
             not = resync ? "" : " not"
-            @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
+            @info "starting up to $parallel parallel downloads @$(t0)"
             @info "files will$not be updated, if newer files are available on the server"
             flush(logio)
         end
@@ -135,8 +140,7 @@ function sftp_download(
         ## Download
         #* Download missing data from server
         @info "downloading data from ICARE server"
-        @info("up to $(Threads.nthreads()) parallel downloads available\n"*
-            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
+        @info "up to $parallel parallel downloads available"
         counter = Counter()
         # Match folder structure with server
         try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
@@ -153,6 +157,42 @@ function sftp_download(
         end
     end #logging to file
 end #function ftp_download
+
+## Functions for distributed work
+
+"""
+    workers() -> Int
+
+Return the number of available distributed workers. In contrast to `Distributed.nworkers()`,
+`workers()` does not count the master process, if no workers were added.
+"""
+nworkers() = dist.nprocs() - 1
+
+
+"""
+    distribute(parallel::Int, logger::Logging.ConsoleLogger)
+
+Set up `parallel` distributed workers and distribute necessary packages and functions to them.
+Log events to `logger`.
+"""
+function distribute(parallel::Int, logger::Logging.ConsoleLogger)::Nothing
+    # Setup workers
+    if nworkers() < parallel
+        Logging.with_logger(logger) do
+            @info "adding $(parallel - nworkers()) workers" workers = parallel
+        end
+        dist.addprocs(parallel - nworkers())
+    elseif nworkers() > parallel
+        Logging.with_logger(logger) do
+            @info "removing $(nworkers() - parallel) workers" workers = parallel
+        end
+        dist.rmprocs(dist.workers()[parallel+1:end]...)
+    end
+    # Distribute packages to workers
+    for p in dist.workers()
+        dist.remotecall_eval(Main, p, :(using ICARE, SFTP, Dates, DataStructures))
+    end
+end
 
 
 ## Functions for syncing with server and setting up a local structure, and

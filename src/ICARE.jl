@@ -18,6 +18,9 @@ import Logging
 import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
 import Base.Threads: @threads
+# Distributed is a standard library package available at runtime
+import Distributed as dist
+import Distributed: @everywhere
 
 # global thread lock
 const thread = ReentrantLock()
