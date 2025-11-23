@@ -100,17 +100,25 @@ function sftp_download(
             @info "downloading '$product' data to '$(realpath(localroot))' for $range"
         end
         #* Syncing local and remote database
-        # Set up dist workers for parallel downloads
-        distribute(parallel, logger)
         # Get connection to server, go to product folder on remote
         ts = Dates.now()
         Logging.with_logger(logger) do
-            @info "initialising database @$ts"
+            n = nworkers()
+            s = n == 1 ? "" : "s"
+            @info "initialising database @$ts with $n worker$s"
         end
-        Base.eval(Main,
-            :(ICARE.@everywhere icare = ICARE.icare_connect($user, $password, $remoteroot, $product, $logger)))
-        @show icare
-            # ℹ Make inventory available for catch block
+        # Create connection on main process
+        icare = icare_connect(user, password, remoteroot, product, logger)
+        # Create connections on workers using simplified function (staggered to avoid overwhelming server)
+        @sync for (i, p) in enumerate(workers())
+            @async begin
+                sleep(0.2 * (i - 1))  # Stagger connections by 0.5 seconds
+                remotecall_wait(Core.eval, p, Main, quote
+                    global icare = $(icare_connect_worker)($user, $password, $remoteroot, $product)
+                end)
+            end
+        end
+        # ℹ Make inventory available for catch block
         inventory = SortedDict{String,Any}()
         # Get available server dates
         try
@@ -157,42 +165,6 @@ function sftp_download(
         end
     end #logging to file
 end #function ftp_download
-
-## Functions for distributed work
-
-"""
-    workers() -> Int
-
-Return the number of available distributed workers. In contrast to `Distributed.nworkers()`,
-`workers()` does not count the master process, if no workers were added.
-"""
-nworkers() = dist.nprocs() - 1
-
-
-"""
-    distribute(parallel::Int, logger::Logging.ConsoleLogger)
-
-Set up `parallel` distributed workers and distribute necessary packages and functions to them.
-Log events to `logger`.
-"""
-function distribute(parallel::Int, logger::Logging.ConsoleLogger)::Nothing
-    # Setup workers
-    if nworkers() < parallel
-        Logging.with_logger(logger) do
-            @info "adding $(parallel - nworkers()) workers" workers = parallel
-        end
-        dist.addprocs(parallel - nworkers())
-    elseif nworkers() > parallel
-        Logging.with_logger(logger) do
-            @info "removing $(nworkers() - parallel) workers" workers = parallel
-        end
-        dist.rmprocs(dist.workers()[parallel+1:end]...)
-    end
-    # Distribute packages to workers
-    for p in dist.workers()
-        dist.remotecall_eval(Main, p, :(using ICARE, SFTP, Dates, DataStructures))
-    end
-end
 
 
 ## Functions for syncing with server and setting up a local structure, and
@@ -263,6 +235,31 @@ function icare_connect(
     catch
         throw(Base.IOError("incorrect product name or version number", 2))
     end
+    return icare
+end
+
+"""
+    icare_connect_worker(user, password, root, product) -> SFTP.Client
+
+Simplified connection function for workers without logging or retry logic.
+"""
+function icare_connect_worker(
+    user::String,
+    password::String,
+    root::String,
+    product::String
+)::SFTP.Client
+    icare = SFTP.Client("sftp://sftp.icare.univ-lille.fr", user, password)
+    try
+        cd(icare, root)
+    catch error
+        if error isa RequestError && error.code == 9
+            icare.uri = SFTP.URI(icare.uri, path=root)
+        else
+            rethrow()
+        end
+    end
+    cd(icare, product)
     return icare
 end
 

@@ -46,6 +46,7 @@ function product_database!(
         # Init empty inventory, if yaml is missing
         new_inventory!(icare, inventory, root, product, logger)
     end
+    remotecall_fetch(() -> println(Main.icare), 2)
     sync_database!(icare, inventory, years, daterange, convert, logger)
 end
 
@@ -221,7 +222,7 @@ function sync_database!(
         dates = Date.(folders, "yyyy_mm_dd")
         isempty(dates) && continue
         #* Scan dates in the current year
-        stats = @pm.showprogress dt = 0.1 desc = "$year" dist.pmap(date -> ICARE.scan_dates(icare, date), dates)
+        stats = @pm.showprogress dt = 0.1 desc = "$year" pmap(date -> ICARE.scan_dates(icare, date), dates)
         updated |= remotefiles!(inventory, stats, logger)
         # Ensure complete years get saved in the local inventory, if something during database setups happens
         updated && (inventory["metadata"]["database"]["updated"] = Dates.now())
@@ -284,7 +285,7 @@ Log events to `logger`.
 """
 function remotefiles!(
     inventory::SortedDict,
-    stats::Vector{Pair{Date,Vector{NamedTuple{(:name, :size, :mtime),Tuple{String,Int,Date}}}}},
+    stats::Vector{NamedTuple{(:date, :granules, :ext),Tuple{Date,SortedDict{String,SortedDict},String}}},
     logger::Logging.ConsoleLogger
 )::Bool
     updated = false

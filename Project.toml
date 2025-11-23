@@ -1,13 +1,14 @@
 name = "ICARE"
 uuid = "d4da717d-1138-44a6-9758-4f5a9640abeb"
-authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 version = "0.6.0-DEV"
+authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 
 [deps]
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
@@ -18,6 +19,7 @@ DataStructures = "0.19.1"
 Dates = "1.10"
 Distributed = "1.10"
 Logging = "1.10"
+Pkg = "1.12.0"
 Printf = "1.10"
 ProgressMeter = "1.10"
 SFTP = "0.2.1"
