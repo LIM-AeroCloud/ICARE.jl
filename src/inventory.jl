@@ -210,7 +210,7 @@ function sync_database!(
     logger::Logging.ConsoleLogger
 )::Nothing
     # Monitor updates
-    updated = false
+    updated = Threads.Atomic{Bool}(false)
     # Define views on metadata and save current date range
     database = inventory["metadata"]["database"]
     #* Loop over dates in online database
@@ -221,28 +221,58 @@ function sync_database!(
         dates = Date.(folders, "yyyy_mm_dd")
         isempty(dates) && continue
         #* Loop over dates in the current year and add missing dates to inventory
-        pm.@showprogress dt=0.1 desc="$year:" for date in dates
-            updated |= new_date!(inventory, date)
-            updated |= remotefiles!(icare, inventory, date)
+        # Setup temporary storage for each thread
+        granules = Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}}()
+        for i = 1:Threads.nthreads()
+            granules[i] = Dict{Date,Vector{SFTP.StatStruct}}()
         end
-        # Ensure complete years get saved in the local inventory, if something during database setups happens
-        updated && (inventory["metadata"]["database"]["updated"] = Dates.now())
-        inventory["metadata"]["database"]["start"] = minimum(keys(inventory["dates"]))
-        inventory["metadata"]["database"]["stop"] = maximum(keys(inventory["dates"]))
+        prog = pm.Progress(length(dates), dt=0.1, desc="$year")
+        # Save file data for each date
+        @threads for date in dates
+            @show date
+            # updated |= new_date!(inventory, date)
+            updated_granules = datecheck!(icare, inventory, granules, date)
+            Threads.atomic_or!(updated, updated_granules)
+            pm.next!(prog)
+        end
+        pm.finish!(prog)
+        if updated[]
+            # Merge thread data into inventory
+            remotefiles!(inventory, granules)
+            # Ensure complete years get saved in the local inventory, if something during database setups happens
+            inventory["metadata"]["database"]["updated"] = Dates.now()
+            inventory["metadata"]["database"]["start"] = minimum(keys(inventory["dates"]))
+            inventory["metadata"]["database"]["stop"] = maximum(keys(inventory["dates"]))
+        end
     end
-    # Save extension for conversion to inventory
+
+    # Save file extensions in inventory, if not done before
+    if updated[]
+        setext!(inventory, granules)
+        @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
+    end
     newext!(inventory, convert)
     # Delete possible temporary inventory data
     delete!(inventory, "temp")
     # Save data gaps to inventory
     data_gaps!(inventory)
     display_gaps(inventory, daterange, logger)
+end
 
-    updated && Logging.with_logger(logger) do
-        @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
-        inventory["metadata"]["database"]["updated"] = Dates.now()
+
+"""
+    setext!(
+        inventory::SortedDict,
+        granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}}
+    )
+
+Set the original file extension in the `inventory` based on the remote files in `granules`.
+"""
+function setext!(inventory::SortedDict, granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}})::Nothing
+    isempty(inventory["metadata"]["file"]["ext"]) || return
+    for  stats in values(granules), statdata in values(stats)
+        inventory["metadata"]["file"]["ext"] = splitext(statdata[1].desc)[2]
     end
-    return
 end
 
 
@@ -276,51 +306,54 @@ end
 
 """
     remotefiles!(
-        icare::SFTP.Client,
         inventory::SortedDict,
-        date::Date
-    ) -> Bool
+        granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}}
+    )
 
-Add file stats for all granules of the `date` based on the `icare` server data. File stats are
-only added for dates with no file data. Indicate updates in the `inventory` by the returned `Bool`.
+Add file stats from `granules` to the `inventory`.
 """
 function remotefiles!(
-    icare::SFTP.Client,
     inventory::SortedDict,
-    date::Date
-)::Bool
-    # Entry checks
-    date in inventory["gaps"] && return false
-    isempty(inventory["dates"][date]) || return false
+    granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}}
+)::Nothing
     # Get stats of remote files (without the current and parent folders)
-    stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
-    for stat in stats
-        desc = splitext(stat.desc)[1]
-        inventory["dates"][date][desc] = SortedDict(
-            "size" => stat.size,
-            "mtime" => Date(Dates.unix2datetime(stat.mtime))
-        )
-        # Restore converted file sizes during resynchronisaton
-        haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
-            (inventory["dates"][date][desc]["size"*inventory["metadata"]["file"]["newext"]] =
-                inventory["temp"][desc])
+    for stats in values(granules), (date, statdata) in stats
+        inventory["dates"][date] = SortedDict{String,SortedDict{String,Any}}()
+        for stat in statdata
+            inventory["dates"][date][stat.desc] = SortedDict(
+                "size" => stat.size,
+                "mtime" => Date(Dates.unix2datetime(stat.mtime))
+            )
+            haskey(inventory, "temp") && haskey(inventory["temp"], stat.desc) &&
+                (inventory["dates"][date][stat.desc]["size"*inventory["metadata"]["file"]["newext"]] =
+                    inventory["temp"][stat.desc])
+        end
     end
-    # Update inventory metadata
-    file = inventory["metadata"]["file"]
-    isempty(file["ext"]) && (file["ext"] = splitext(stats[1].desc)[2])
-    return true
 end
 
 
 """
-    new_date!(inventory::SortedDict, date::Date) -> Bool
+    datecheck!(
+        icare::SFTP.Client,
+        inventory::SortedDict,
+        granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}},
+        date::Date
+    -> Bool
 
-Add the given `date` to the `inventory`, if missing.
-Return `true`, if the `date` was added, otherwise `false`.
+Add stats from the `icare` server of the given `date` to the `granules` dict, if missing in
+the `inventory`. Indicate an update by the returned `Bool`.
 """
-function new_date!(inventory::SortedDict, date::Date)::Bool
+function datecheck!(
+    icare::SFTP.Client,
+    inventory::SortedDict,
+    granules::Dict{Int,Dict{Date,Vector{SFTP.StatStruct}}},
+    date::Date
+)::Bool
+    # Entry checks
+    date in inventory["gaps"] && return false
     haskey(inventory["dates"], date) && return false
-    inventory["dates"][date] = SortedDict{String,SortedDict}()
+    # Save remote file stats to thread dict
+    granules[Threads.threadid()][date] = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
     return true
 end
 

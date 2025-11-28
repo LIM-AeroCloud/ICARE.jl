@@ -17,6 +17,7 @@ import YAML
 import Logging
 import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
+import Base.Threads
 import Base.Threads: @threads
 
 # global thread lock

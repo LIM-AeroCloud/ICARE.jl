@@ -5,11 +5,11 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## [UNRELEASED]
 
-## Added
+### Added
 
 - Improved error handling during download
 
-## Changed
+### Changed
 
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
   change depencies from `OrderedCollections` to `DataStructures` ([#18])
