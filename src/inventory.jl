@@ -46,7 +46,6 @@ function product_database!(
         # Init empty inventory, if yaml is missing
         new_inventory!(icare, inventory, root, product, logger)
     end
-    remotecall_fetch(() -> println(Main.icare), 2)
     sync_database!(icare, inventory, years, daterange, convert, logger)
 end
 
@@ -301,7 +300,7 @@ function remotefiles!(
             updated = true
         end
         # Get new file stats
-        desc = setdiff!(keys(stat.granules), keys(inventory["dates"][stat.date]))
+        desc = setdiff!((collect∘keys)(stat.granules), (collect∘keys)(inventory["dates"][stat.date]))
         for d in desc
             inventory["dates"][stat.date][d] = stat.granules[d]
             updated = true
@@ -339,6 +338,19 @@ Return a `NamedTuple` with the `date`, a `SortedDict` of `granules` (with file s
 and the common remote file `ext`.
 """
 function scan_dates(
+    icare::SFTP.Client,
+    date::Date
+)::NamedTuple{(:date, :granules, :ext),Tuple{Date,SortedDict{String,SortedDict},String}}
+    try
+        return _sftp_scan(icare, date)
+    catch
+        icare = icare_connect_worker(icare.username, icare.password, dirname(icare), basename(icare))
+        return _sftp_scan(icare, date)
+    end
+end
+
+
+function _sftp_scan(
     icare::SFTP.Client,
     date::Date
 )::NamedTuple{(:date, :granules, :ext),Tuple{Date,SortedDict{String,SortedDict},String}}

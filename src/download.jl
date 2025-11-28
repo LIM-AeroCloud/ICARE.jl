@@ -112,7 +112,6 @@ function sftp_download(
         # Create connections on workers using simplified function (staggered to avoid overwhelming server)
         @sync for (i, p) in enumerate(workers())
             @async begin
-                sleep(0.2 * (i - 1))  # Stagger connections by 0.5 seconds
                 remotecall_wait(Core.eval, p, Main, quote
                     global icare = $(icare_connect_worker)($user, $password, $remoteroot, $product)
                 end)
