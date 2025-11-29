@@ -12,6 +12,9 @@ ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
+[sources]
+SFTP = {rev = "main", url = "https://github.com/LIM-AeroCloud/SFTP.jl"}
+
 [compat]
 DataStructures = "0.19.1"
 Dates = "1.10"

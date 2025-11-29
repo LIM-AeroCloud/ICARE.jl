@@ -11,6 +11,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## Changed
 
+- `sftp_download` now returns the inventory for further exploration ([#20])
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
   change depencies from `OrderedCollections` to `DataStructures` ([#18])
 - **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall

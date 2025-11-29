@@ -28,7 +28,15 @@ complete resynchronisation is forced.
 Use the [`sftp_download`](@ref) function to synchronise the AERIS/ICARE server with the local
 system. Mandatory arguments are the ICARE user credentials, the product, and the date span.
 Further fine-tuning of the downloads is possible with keyword arguments as described in the
-[`sftp_download`](@ref) help.
+[`sftp_download`](@ref) help. The function returns the current full inventory with all available
+online dates over the full date range for further exploration.
+
+The inventory has its own version number that follows the rules of [semantic
+versioning](https://semver.org). It is, however, considered part of the public API of the _ICARE_
+package. So, any breaking changes in the inventory, for which no transitioning from older versions
+is provided, is considered a breaking change in _ICARE_ itself. If a transition is provided, it
+would be a major update of the inventory, but a minor update of _ICARE_.
+
 
 ```@docs
 sftp_download
