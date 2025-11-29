@@ -48,7 +48,7 @@ or a year (if both day and month are omitted).
 - `convert::Bool`: Whether or not to convert the downloaded files to another file format (default: `true`).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
-  on the remote server (default: `false`).
+  on the remote server (default: `false`). Converted file sizes will be deleted for any updates.
 - `logfile::String`: The name of the log file (default: `"downloads.log"`; the name will be appended
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).

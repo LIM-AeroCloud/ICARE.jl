@@ -15,6 +15,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## Changed
 
+- `sftp_download` now returns the inventory for further exploration ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
   change depencies from `OrderedCollections` to `DataStructures` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
 - **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
@@ -29,6 +30,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- converted file sizes are only kept in the database after an update, if the original file size
+  hasn't changed ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
 - Automatically update version number in the badge in the README and the link to the latest stable
   during pre-release
 - Fixed an issue with the setup of the target extension that lead to errors during download sessions

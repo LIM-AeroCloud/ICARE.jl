@@ -301,9 +301,11 @@ function remotefiles!(
             "mtime" => Date(Dates.unix2datetime(stat.mtime))
         )
         # Restore converted file sizes during resynchronisaton
-        haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
-            (inventory["dates"][date][desc]["size"*inventory["metadata"]["file"]["newext"]] =
-                inventory["temp"][desc])
+        if haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
+            inventory["temp"][desc]["size"] == inventory["dates"][date][desc]["size"]
+            newext = "size"*inventory["metadata"]["file"]["newext"]
+            inventory["dates"][date][desc][newext] = inventory["temp"][desc][newext]
+        end
     end
     # Update inventory metadata
     file = inventory["metadata"]["file"]
@@ -482,10 +484,14 @@ Clear all data for dates in the `inventory`, but save the converted file sizes i
 """
 function clear_dates!(inventory::SortedDict)::Nothing
     # Save converted sizes to suppress involuntary Downloads
-    converted = Dict{String,Int}()
+    converted = SortedDict{String,SortedDict}()
     for date in values(inventory["dates"]), granule in date
-        haskey(granule[2], "size"*inventory["metadata"]["file"]["newext"]) &&
-            (converted[granule[1]] = granule[2]["size"*inventory["metadata"]["file"]["newext"]])
+        newext = "size"*inventory["metadata"]["file"]["newext"]
+        haskey(granule[2], newext) &&
+            (converted[granule[1]] = SortedDict(
+                "size" => granule[2]["size"],
+                newext => granule[2][newext]
+            ))
     end
     inventory["temp"] = converted
     # Delete all dates
@@ -512,9 +518,9 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     filedata = [d for date in keys(inventory["dates"]) for d in values(inventory["dates"][date])]
     inventory["metadata"]["file"]["conversions"] =
         haskey.(filedata, "size"*inventory["metadata"]["file"]["newext"]) |> count
-    inventory["metadata"]["database"]["size"] = (get.(filedata, "size", 0) |> sum)/1e9
+    inventory["metadata"]["database"]["size"] = get.(filedata, "size", 0) |> sum
     inventory["metadata"]["database"]["converted size"] =
-        (get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum)/1e9
+        get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()
     # Save invetory with updated mtime
     YAML.write_file(file, inventory)
