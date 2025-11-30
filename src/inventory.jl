@@ -72,7 +72,7 @@ function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
         "created" => inventory["metadata"]["database"]["created"],
         "updated" => inventory["metadata"]["database"]["updated"]
     )
-    # Convert verstion to version number
+    # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     return
 end
@@ -253,7 +253,7 @@ Check and update the converted file extension in the inventory.
 If `convert` is `false`, the target extension is set to the original file extension.
 """
 function newext!(inventory::SortedDict, convert::Bool)::Nothing
-    # Ingnore newext, if no conversion is requested
+    # Ignore newext, if no conversion is requested
     convert || return
     # Definitions
     target = newext()
@@ -522,7 +522,7 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     inventory["metadata"]["database"]["converted size"] =
         get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()
-    # Save invetory with updated mtime
+    # Save inventory with updated mtime
     YAML.write_file(file, inventory)
 end
 

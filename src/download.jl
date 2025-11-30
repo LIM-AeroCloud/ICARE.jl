@@ -19,7 +19,7 @@
         loglevel::Symbol = :Debug
     ) -> SortedDict{String,Any}
 
-Download satellite data from the Aeris/ICARE server. The function returns a dictonary with
+Download satellite data from the Aeris/ICARE server. The function returns a dictionary with
 the inventory of available online data for the given product.
 
 !!! note
@@ -151,7 +151,7 @@ function sftp_download(
             save_inventory(inventory, ts)
             log_counter(counter, logger, logio, t0)
             @info "download session closed"
-            # Return inventory for further investiaation after download
+            # Return inventory for further investigation after download
             return inventory
         end
     end #logging to file
