@@ -12,8 +12,7 @@ A Julia package for retrieving data from the
 
 Use function `sftp_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
-data that has a root folder in the format `<product>.v<major>.<minor>` and a subfolder
-structure of years and dates like this: `yyyy/yyyy_mm_dd`.
+data with a folder structure of years and dates like this: `yyyy/yyyy_mm_dd`.
 
 License
 -------
@@ -30,8 +29,8 @@ packages, switch to the `main` branch to only obtain stable versions.
 
 ```julia
 julia> ]
-pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
 pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git#main
+pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
 pkg> ← (backspace)
 julia> using ICARE
 ```
@@ -49,12 +48,12 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
-    converter::Union{Nothing,String} = "",
+    convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::Nothing
+)::SortedDict{String,Any}
 ```
 
 Download missing CALIOP hdf files for the given `product` (e.g., `"05kmAPro"` or `"01kmCLay"`)
@@ -83,7 +82,7 @@ exist, you are prompted to confirm it's creation or abort the download.
 In the root folder the following folder structure will be used, missing folders are
 automatically created:
 
-- product folder as `<product>.v<major>.<minor>`
+- product folder (assumed in the format `<product>.v<major>.<minor>`)
   - year folder as `yyyy`
     - date folder as `yyyy_mm_dd`
 
@@ -108,6 +107,13 @@ All log files have the format `path/to/logfile_<timestamp>.ext`.
 This has the advantage that names can be reused for several download sessions and the
 standard file name does not have to be changed. One can also see, when files where last
 downloaded from a glance.
+The following levels exist and can be specified with the `loglevel` keyword as `Symbol`.
+By default, all log messages are shown.
+
+- `:Error`: Only errors (and severe warnings) are shown.
+- `:Warn`: Warnings and errors are shown.
+- `:Info`: Info messages are shown additionally.
+- `:Debug`: All log messages are shown.
 
 ### Example script
 
@@ -167,13 +173,6 @@ Log files for the conversion will be created. The path and file name can be spec
 with the `logfile` keyword. A timestamp will be appended to the logfile name, so you
 can reuse `logfile` names. By default, `hdfupgrades_<timestamp>.log` will be saved to
 the `rootdir`.
-The level of information can be reduced. By default, all information is given. The 
-following levels exist, and can be specified with the `loglevel` keyword as `Symbol`:
-
-- `:Error`: Only errors (and severe warnings) are shown.
-- `:Warn`: Warnings and errors are shown.
-- `:Info`: Info messages are shown additionally.
-- `:Debug`: All log messages are shown.
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://LIM-AeroCloud.github.io/ICARE.jl/stable/
