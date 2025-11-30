@@ -4,7 +4,7 @@
 """
     product_database!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         root::String,
         product::String,
         daterange::@NamedTuple{start::Date,stop::Date},
@@ -25,7 +25,7 @@ Updates are logged to the screen and the log file with `logger`.
 """
 function product_database!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     root::String,
     product::String,
     daterange::@NamedTuple{start::Date,stop::Date},
@@ -44,29 +44,44 @@ function product_database!(
         filter_years!(inventory, years, daterange, resync, logger)
     else
         # Init empty inventory, if yaml is missing
-        new_inventory!(icare, inventory, root, product, convert, logger)
+        new_inventory!(icare, inventory, root, product, logger)
     end
     sync_database!(icare, inventory, years, daterange, convert, logger)
 end
 
 
 """
-    load_inventory!(inventory::OrderedDict, file::AbstractString)
+    load_inventory!(inventory::SortedDict, file::AbstractString)
 
 Load data from a yaml `file` to the `inventory`.
 """
-function load_inventory!(inventory::OrderedDict, file::AbstractString)::Nothing
+function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
+    # Load inventory with sorted entries
     @info "loading local inventory"
-    for (key, value) in YAML.load_file(file, dicttype=OrderedDict)
+    for (key, value) in YAML.load_file(file, dicttype=SortedDict)
         inventory[key] = value
     end
+    # Reorder database metadata entries in a more logical order
+    inventory["metadata"]["database"] = OrderedDict(
+        "dates" => inventory["metadata"]["database"]["dates"],
+        "missing" => inventory["metadata"]["database"]["missing"],
+        "size" => inventory["metadata"]["database"]["size"],
+        "converted size" => inventory["metadata"]["database"]["converted size"],
+        "start" => inventory["metadata"]["database"]["start"],
+        "stop" => inventory["metadata"]["database"]["stop"],
+        "created" => inventory["metadata"]["database"]["created"],
+        "updated" => inventory["metadata"]["database"]["updated"]
+    )
+    # Convert version to version number
+    inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
+    return
 end
 
 
 """
     new_inventory!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         root::String,
         product::String,
         convert::Bool,
@@ -77,46 +92,52 @@ Initialise a new and empty inventory.
 """
 function new_inventory!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     root::String,
     product::String,
-    convert::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
     @info "initialising new inventory"
     Logging.with_logger(logger) do
         @info "initialising new, empty inventory"
     end
-    inventory["metadata"] = OrderedDict{String,Any}(
-        "file" => OrderedDict{String,Any}("count" => 0, "conversions" => 0, "ext" => ""),
-        "server" => OrderedDict{String,String}(
-            "product" => product,
-            "root" => dirname(icare),
-            "productpath" => icare.uri.path
-        ),
-        "local" => OrderedDict{String,String}(
-            "root" => realpath(root),
-            "path" => realpath(joinpath(root, product))
-        ),
+    inventory["dates"] = SortedDict{Date,SortedDict}()
+    inventory["gaps"] = Vector{Date}()
+    inventory["metadata"] = SortedDict{String,Any}(
         "database" => OrderedDict{String,Any}(
             "dates" => 0,
             "missing" => 0,
+            "size" => 0,
+            "converted size" => 0,
             "start" => Date(9999),
             "stop" => Date(0),
             "created" => Dates.now(),
             "updated" => Dates.now()
-        )
+        ),
+        "file" => SortedDict{String,Any}(
+            "conversions" => 0,
+            "count" => 0,
+            "ext" => "",
+            "newext" => ""
+        ),
+        "local" => SortedDict{String,String}(
+            "path" => realpath(joinpath(root, product)),
+            "root" => realpath(root)
+        ),
+        "remote" => SortedDict{String,String}(
+            "product" => product,
+            "productpath" => icare.uri.path,
+            "root" => dirname(icare)
+        ),
+        "version" => v"1.0.0"
     )
-    inventory["metadata"]["file"]["newext"] = newext(inventory, convert)
-    inventory["dates"] = OrderedDict{Date,OrderedDict}()
-    inventory["gaps"] = Vector{Date}()
     return
 end
 
 
 """
     filter_years!(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
         resync::Bool,
@@ -128,7 +149,7 @@ the `inventory` unless `resync` is set to `true`. In this case, empty dates and 
 metadata. Log events to `logger`.
 """
 function filter_years!(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
     resync::Bool,
@@ -155,6 +176,8 @@ function filter_years!(
         inventory["metadata"]["file"]["conversions"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
+        inventory["metadata"]["database"]["size"] = 0
+        inventory["metadata"]["database"]["converted size"] = 0
         inventory["metadata"]["database"]["start"] = Date(9999)
         inventory["metadata"]["database"]["stop"] = Date(0)
     end
@@ -167,7 +190,7 @@ end
 """
     sync_database!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
         convert::Bool,
@@ -180,7 +203,7 @@ Log events to `logger`.
 """
 function sync_database!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
@@ -204,8 +227,8 @@ function sync_database!(
         end
         # Ensure complete years get saved in the local inventory, if something during database setups happens
         updated && (inventory["metadata"]["database"]["updated"] = Dates.now())
-        inventory["metadata"]["database"]["start"] = minimum(inventory["dates"].keys)
-        inventory["metadata"]["database"]["stop"] = maximum(inventory["dates"].keys)
+        inventory["metadata"]["database"]["start"] = minimum(keys(inventory["dates"]))
+        inventory["metadata"]["database"]["stop"] = maximum(keys(inventory["dates"]))
     end
     # Save extension for conversion to inventory
     newext!(inventory, convert)
@@ -224,13 +247,13 @@ end
 
 
 """
-    newext!(inventory::OrderedDict, convert::Bool)
+    newext!(inventory::SortedDict, convert::Bool)
 
 Check and update the converted file extension in the inventory.
 If `convert` is `false`, the target extension is set to the original file extension.
 """
-function newext!(inventory::OrderedDict, convert::Bool)::Nothing
-    # Ingnore newext, if no conversion is requested
+function newext!(inventory::SortedDict, convert::Bool)::Nothing
+    # Ignore newext, if no conversion is requested
     convert || return
     # Definitions
     target = newext()
@@ -241,8 +264,7 @@ function newext!(inventory::OrderedDict, convert::Bool)::Nothing
     if isempty(new_ext)
         # Save extension for conversion in inventory, if not done before
         target == ext && throw(ArgumentError("conversion to the same file type ($ext) is not allowed"))
-        new_ext = target
-        @info "newext" inventory["metadata"]["file"]["newext"] new_ext
+        inventory["metadata"]["file"]["newext"] = target
     elseif target ≠ new_ext
         # Check previous extensions are consistent with current conversions
         throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
@@ -255,7 +277,7 @@ end
 """
     remotefiles!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         date::Date
     ) -> Bool
 
@@ -264,7 +286,7 @@ only added for dates with no file data. Indicate updates in the `inventory` by t
 """
 function remotefiles!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     date::Date
 )::Bool
     # Entry checks
@@ -272,17 +294,18 @@ function remotefiles!(
     isempty(inventory["dates"][date]) || return false
     # Get stats of remote files (without the current and parent folders)
     stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
-    files = [splitext(s.desc)[1] for s in stats]
-    sortorder = sortperm(files)
-    # Save file stats to new inventory entry
-    for i in sortorder
-        inventory["dates"][date][files[i]] = OrderedDict(
-            "size" => stats[i].size,
-            "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
+    for stat in stats
+        desc = splitext(stat.desc)[1]
+        inventory["dates"][date][desc] = SortedDict(
+            "size" => stat.size,
+            "mtime" => Date(Dates.unix2datetime(stat.mtime))
         )
         # Restore converted file sizes during resynchronisaton
-        haskey(inventory, "temp") && haskey(inventory["temp"], files[i]) &&
-            (inventory["dates"][date][files[i]]["converted"] = inventory["temp"][files[i]])
+        if haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
+            inventory["temp"][desc]["size"] == inventory["dates"][date][desc]["size"]
+            newext = "size"*inventory["metadata"]["file"]["newext"]
+            inventory["dates"][date][desc][newext] = inventory["temp"][desc][newext]
+        end
     end
     # Update inventory metadata
     file = inventory["metadata"]["file"]
@@ -292,14 +315,14 @@ end
 
 
 """
-    new_date!(inventory::OrderedDict, date::Date) -> Bool
+    new_date!(inventory::SortedDict, date::Date) -> Bool
 
 Add the given `date` to the `inventory`, if missing.
 Return `true`, if the `date` was added, otherwise `false`.
 """
-function new_date!(inventory::OrderedDict, date::Date)::Bool
+function new_date!(inventory::SortedDict, date::Date)::Bool
     haskey(inventory["dates"], date) && return false
-    inventory["dates"][date] = OrderedDict{String,OrderedDict}()
+    inventory["dates"][date] = SortedDict{String,SortedDict}()
     return true
 end
 
@@ -307,7 +330,7 @@ end
 """
     update_stats!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         file::File,
         resync::Bool,
         logger::Logging.ConsoleLogger
@@ -321,7 +344,7 @@ Log events to `logger`.
 """
 function update_stats!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     file::File,
     resync::Bool,
     logger::Logging.ConsoleLogger
@@ -332,15 +355,15 @@ function update_stats!(
     stats = SFTP.statscan(icare, file.dir.src)
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
-    obsolete = setdiff(inventory["dates"][file.date].keys, names)
+    obsolete = setdiff(keys(inventory["dates"][file.date]), names)
     lock(thread) do
         for obsolete_file in obsolete
-            inventory["dates"][file.date][obsolete_file]["size"] = 0
-            delete!(inventory["dates"][file.date][obsolete_file], "converted")
+            delete!(inventory["dates"][file.date], obsolete_file)
         end
         if !isempty(obsolete)
             Logging.with_logger(logger) do
-                @warn "resetting file stats for date $(file.date)" obsolete
+                @warn "deleting obsolete files for $(file.date)" obsolete
+                inventory["metadata"]["database"]["updated"] = Dates.now()
             end
         end
     end
@@ -349,25 +372,25 @@ function update_stats!(
 
     # Update file stats in inventory
     updated = false
-    for i in sortorder
+    for stat in stats
+        desc = splitext(stat.desc)[1]
         # Compare inventory with remote
-        dbfile = inventory["dates"][file.date][names[i]]
-        if stats[i].size == dbfile["size"] &&
-            (Date∘Dates.unix2datetime)(stats[i].mtime) == dbfile["mtime"]
-            lock(thread) do
-                updated = true
-                inventory["dates"][file.date][names[i]] = OrderedDict(
-                    "size" => stats[i].size,
-                    "mtime" => Date(Dates.unix2datetime(stats[i].mtime))
-                )
-            end
+        if stat.size ≠ inventory["dates"][file.date][desc]["size"] ||
+            (Date∘Dates.unix2datetime)(stat.mtime) ≠ inventory["dates"][file.date][desc]["mtime"]
+            updated = true
+            inventory["dates"][file.date][desc]["size"] = stat.size
+            inventory["dates"][file.date][desc]["mtime"] = (Date∘Dates.unix2datetime)(stat.mtime)
         end
         # Compare h5 size with current conversion
-        if isfile(file.location.target) && haskey(dbfile, "converted") &&
-            dbfile["converted"] ≠ filesize(file.location.target)
-            lock(thread) do
-                updated = true
-                dbfile["converted"] = filesize(file.location.target)
+        if haskey(inventory["dates"][file.date][desc], "size"*file.newext)
+            if isfile(file.location.target) &&
+                inventory["dates"][file.date][desc]["size"*file.newext] ≠ filesize(file.location.target)
+                lock(thread) do
+                    updated = true
+                    inventory["dates"][file.date][desc]["size"*file.newext] = filesize(file.location.target)
+                end
+            else
+                delete!(inventory["dates"][file.date][desc], "size"*file.newext)
             end
         end
     end
@@ -384,14 +407,14 @@ end
 ## Functions processing data gaps
 
 """
-    data_gaps!(inventory::OrderedDict, dates::Vector{Date})
+    data_gaps!(inventory::SortedDict, dates::Vector{Date})
 
 Add missing data gaps to the `inventory` from gaps in `dates`.
 """
-function data_gaps!(inventory::OrderedDict)::Nothing
+function data_gaps!(inventory::SortedDict)::Nothing
     # Determine data gaps in the date range
     db = inventory["metadata"]["database"]
-    new_gaps = setdiff(db["start"]:db["stop"], inventory["dates"].keys)
+    new_gaps = setdiff(db["start"]:db["stop"], keys(inventory["dates"]))
     union!(inventory["gaps"], new_gaps) |> sort!
     db["missing"] = length(inventory["gaps"])
     return
@@ -400,7 +423,7 @@ end
 
 """
     display_gaps(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         daterange::@NamedTuple{start::Date,stop::Date},
         logger::Logging.ConsoleLogger
     )
@@ -409,7 +432,7 @@ Log data gaps in the `inventory` in the given `daterange` to `logger`.
 Combine single dates in the `inventory` metadata to date ranges.
 """
 function display_gaps(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     daterange::@NamedTuple{start::Date,stop::Date},
     logger::Logging.ConsoleLogger
 )::Nothing
@@ -455,15 +478,20 @@ end
 ##  Functions for resetting or saving the inventory
 
 """
-    clear_dates!(inventory::OrderedDict)
+    clear_dates!(inventory::SortedDict)
 
 Clear all data for dates in the `inventory`, but save the converted file sizes in a temp entry.
 """
-function clear_dates!(inventory::OrderedDict)::Nothing
+function clear_dates!(inventory::SortedDict)::Nothing
     # Save converted sizes to suppress involuntary Downloads
-    converted = Dict{String,Int}()
-    for date in inventory["dates"].vals, granule in date
-        haskey(granule[2], "converted") && (converted[granule[1]] = granule[2]["converted"])
+    converted = SortedDict{String,SortedDict}()
+    for date in values(inventory["dates"]), granule in date
+        newext = "size"*inventory["metadata"]["file"]["newext"]
+        haskey(granule[2], newext) &&
+            (converted[granule[1]] = SortedDict(
+                "size" => granule[2]["size"],
+                newext => granule[2][newext]
+            ))
     end
     inventory["temp"] = converted
     # Delete all dates
@@ -473,11 +501,11 @@ end
 
 
 """
-    save_inventory(inventory::OrderedDict, t::DateTime)
+    save_inventory(inventory::SortedDict, t::DateTime)
 
 Save the `inventory` to `<product path>/.inventory.yaml` if changes occurred since time `t`.
 """
-function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
+function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     # Return, if no changes occured since time `t`
     inventory["metadata"]["database"]["updated"] > t || return
     # Define inventory file
@@ -485,11 +513,16 @@ function save_inventory(inventory::OrderedDict, t::DateTime)::Nothing
     @info "saving inventory to '$file'"
     # Update statistics
     inventory["metadata"]["database"]["dates"] = length(inventory["dates"])
-    inventory["metadata"]["file"]["count"] = sum(length.(inventory["dates"][date] for date in inventory["dates"].keys))
-    filedata = vcat([d.vals for d in [inventory["dates"][date] for date in inventory["dates"].keys]]...)
-    inventory["metadata"]["file"]["conversions"] = haskey.(filedata, "converted") |> count
+    inventory["metadata"]["file"]["count"] = sum(length.(inventory["dates"][date]
+        for date in keys(inventory["dates"])))
+    filedata = [d for date in keys(inventory["dates"]) for d in values(inventory["dates"][date])]
+    inventory["metadata"]["file"]["conversions"] =
+        haskey.(filedata, "size"*inventory["metadata"]["file"]["newext"]) |> count
+    inventory["metadata"]["database"]["size"] = get.(filedata, "size", 0) |> sum
+    inventory["metadata"]["database"]["converted size"] =
+        get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()
-    # Save invetory with updated mtime
+    # Save inventory with updated mtime
     YAML.write_file(file, inventory)
 end
 
@@ -498,7 +531,7 @@ end
 
 """
     check_localroot!(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         root::AbstractString,
         product::AbstractString
     )
@@ -507,7 +540,7 @@ Check, if the `root` has changed and update the root path and the path to the
 `product` main folder in the `inventory`.
 """
 function check_localroot!(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     root::AbstractString,
     product::AbstractString
 )::Nothing

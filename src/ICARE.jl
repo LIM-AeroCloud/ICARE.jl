@@ -15,7 +15,7 @@ import Dates
 import Dates: Date, DateTime
 import YAML
 import Logging
-import OrderedCollections: OrderedDict
+import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
 import Base.Threads: @threads
 

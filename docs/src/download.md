@@ -28,7 +28,15 @@ complete resynchronisation is forced.
 Use the [`sftp_download`](@ref) function to synchronise the AERIS/ICARE server with the local
 system. Mandatory arguments are the ICARE user credentials, the product, and the date span.
 Further fine-tuning of the downloads is possible with keyword arguments as described in the
-[`sftp_download`](@ref) help.
+[`sftp_download`](@ref) help. The function returns the current full inventory with all available
+online dates over the full date range for further exploration.
+
+The inventory has its own version number that follows the rules of [semantic
+versioning](https://semver.org). It is, however, considered part of the public API of the _ICARE_
+package. So, any breaking changes in the inventory, for which no transitioning from older versions
+is provided, is considered a breaking change in _ICARE_ itself. If a transition is provided, it
+would be a major update of the inventory, but a minor update of _ICARE_.
+
 
 ```@docs
 sftp_download
@@ -121,6 +129,12 @@ During an [`sftp_download`](@ref), you can set the `convert` keyword argument to
 By default, this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4 
 (`.hdf`) format. You can overload the [`ICARE.convert_file`](@ref) function, see section about
 [Converting to other file formats](@ref). However, you are allowed to save only one other format.
+
+!!! warning "Important Notice"
+    Data conversion is only available under Linux and MacOS, not under Windows. If you want
+    to use *ICARE.jl* under Windows with data conversion, you need to write your own conversion
+    routine and overload [`ICARE.convert_file`](@ref) and [`ICARE.newext`](@ref) (see section
+    about [Converting to other file formats](@ref)).
 
 !!! tip
     If, you want both formats saved on your local machine, download the original format with

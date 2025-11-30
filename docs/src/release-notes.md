@@ -7,10 +7,31 @@ EditURL = "https://github.com/LIM-AeroCloud/ICARE.jl/blob/master/CHANGELOG.md"
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [UNRELEASED]
+
+## Added
+
+- Improved error handling during download
+
+## Changed
+
+- `sftp_download` now returns the inventory for further exploration ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
+- Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
+  change depencies from `OrderedCollections` to `DataStructures` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+- **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
+  file sizes of the original format and the size of already converted files; add a `version`
+  number to `metadata` to allow better tracking of changes in the inventory ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+- **Breaking**: Rename `converted` field with the converted file size to `size.<ext>` in each date dict
+- Update dependencies in docs before using `make docs` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+- Simplify `favicon`
+- Improved documentation and logging
+
 ## [v0.5.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.1) - 2025-09-07
 
 ### Fixed
 
+- converted file sizes are only kept in the database after an update, if the original file size
+  hasn't changed ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
 - Automatically update version number in the badge in the README and the link to the latest stable
   during pre-release
 - Fixed an issue with the setup of the target extension that lead to errors during download sessions
