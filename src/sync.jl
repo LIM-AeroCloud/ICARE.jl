@@ -1,35 +1,51 @@
 ## Routines related to syncing local and remote directories
 
 """
-    clean(root::String=".")
-    clean(inventory::SortedDict{String, Any})
+    clean(root::String="."; kwargs)
+    clean(inventory::SortedDict{String, Any}; kwargs)
 
 Cleans a product folder recursively from all content not listed in the inventory, i.e. not
 available on the ICARE server. The function has to methods, you can either provide an
 `AbstractString` with the path of the product folder or the inventory as `SortedDict` of the
 product.
+
+# Keyword Arguments
+
+- `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
+  file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
+  the inventory. Can be used to keep log or metadata files.
 """
 function clean end
 
-function clean(root::AbstractString=".")::Nothing
+function clean(root::AbstractString="."; keepext::Union{AbstractString,Vector{<:AbstractString}}="")::Nothing
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
     inventory = SortedDict{String, Any}()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
-    clean(inventory)
+    clean(inventory; keepext)
 end
 
-function clean(inventory::SortedDict{String, Any})::Nothing
+function clean(
+    inventory::SortedDict{String, Any};
+    keepext::Union{AbstractString,Vector{<:AbstractString}}=""
+)::Nothing
     # Rearrange inventory for better processing
     database = inventory_dates(inventory)
     # Scan inventory for additional files and folders
     root = inventory["metadata"]["local"]["path"]
-    extras = localscan(database, root)
+    extra = localscan(database, root)
+    # Keep specified extensions
+    if !isempty(keepext)
+        keepext isa Vector || (keepext = [keepext])
+        for ext in keepext
+            filter!(!endswith(ext), extra.files)
+        end
+    end
     # Clean up local database
-    if confirm(extras)
-        rm.(extras.files, force=true)
-        rm.(extras.folders, recursive=true, force=true)
+    if confirm(extra)
+        rm.(extra.files, force=true)
+        rm.(extra.folders, recursive=true, force=true)
     else
         @info "aborting cleanup"
     end
@@ -80,17 +96,17 @@ function localscan(
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Setup
     root = realpath(root)
-    extras = (folders = Set{String}(), files = Set{String}())
+    extra = (folders = Set{String}(), files = Set{String}())
     # Get files and folders within root recursively
-    _localscan!(database, extras, root)
-    return extras
+    _localscan!(database, extra, root)
+    return extra
 end
 
 
 """
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        extras::@NamedTuple{folders::Set{String},files::Set{String}},
+        extra::@NamedTuple{folders::Set{String},files::Set{String}},
         root::String="."
     )
 
@@ -99,7 +115,7 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 """
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    extras::@NamedTuple{folders::Set{String},files::Set{String}},
+    extra::@NamedTuple{folders::Set{String},files::Set{String}},
     root::String="."
 )::Nothing
     # Get files and folders in root
@@ -107,37 +123,37 @@ function _localscan!(
     files = filter(isfile, content)
     folders = filter(isdir, content)
     # Save extra files and folders
-    [push!(extras.folders, f) for f in setdiff(folders, database.folders)]
-    [push!(extras.files, f) for f in setdiff(files, database.files)]
+    [push!(extra.folders, f) for f in setdiff(folders, database.folders)]
+    [push!(extra.files, f) for f in setdiff(files, database.files)]
     # Search recursively in database folders
-    [_localscan!(database, extras, i) for i in intersect(folders, database.folders)]
+    [_localscan!(database, extra, i) for i in intersect(folders, database.folders)]
     return
 end
 
 
 """
-    confirm(extras::@NamedTuple{folders::Set{String},files::Set{String}}) -> Bool
+    confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}}) -> Bool
 
-Prompt the user to confirm the deletion of files and folders listed in `extras`.
+Prompt the user to confirm the deletion of files and folders listed in `extra`.
 Returns `true`, if the user confirmed with `"yes"`, `false` otherwise.
 """
-function confirm(extras::@NamedTuple{folders::Set{String},files::Set{String}})::Bool
+function confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}})::Bool
     # Nothing to clean
-    isempty(extras.folders) && isempty(extras.files) && return true
+    isempty(extra.folders) && isempty(extra.files) && return true
     # Initial warning
     @warn("The following paths are not part of the inventory and will be removed.",
         _module=nothing, _file=nothing, _line=nothing)
     # List folders
-    if !isempty(extras.folders)
+    if !isempty(extra.folders)
         printstyled("Folders:\n", color=:yellow, bold=true)
         print("- ")
-        println.(join(extras.folders |> collect |> sort, "\n- "))
+        println.(join(extra.folders |> collect |> sort, "\n- "))
     end
     # List files
-    if !isempty(extras.files)
+    if !isempty(extra.files)
         printstyled("Files:\n", color=:yellow, bold=true)
         print("- ")
-        println.(join(extras.files |> collect |> sort, "\n- "))
+        println.(join(extra.files |> collect |> sort, "\n- "))
     end
     # File prompt for confirmation
     printstyled("Proceed (yes/no)? ", color=:yellow, bold=true)
