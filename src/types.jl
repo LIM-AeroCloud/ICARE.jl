@@ -98,3 +98,14 @@ function File(
     remote = joinpath(icare.uri, datadir..., name*ext).path
     File(name, ext, newext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
 end
+
+############################################################################################
+
+## Enums
+
+"""
+# Enum Extension
+
+Store general choices for available file extensions in the database.
+"""
+@enum Extension::Int8 none original converted

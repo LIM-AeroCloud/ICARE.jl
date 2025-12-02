@@ -22,14 +22,14 @@ import Base.Threads: @threads
 # global thread lock
 const thread = ReentrantLock()
 
-# Export functions
-export sftp_download, hdfupgrade
+# Export functions and types
+export sftp_download, hdfupgrade, clean, Extension, original, converted
 
 # Include source files
 include("types.jl") # types and exceptions
 include("inventory.jl") # routines related to the local inventory
 include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion
-# TODO include("sync.jl") # routines related to syncing local and remote directories
+include("sync.jl") # routines related to syncing local and remote directories
 
 end #module ICARE
