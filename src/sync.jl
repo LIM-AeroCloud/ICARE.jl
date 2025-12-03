@@ -1,13 +1,26 @@
 ## Routines related to syncing local and remote directories
 
 """
-    clean(root::String="."; kwargs)
-    clean(inventory::SortedDict{String, Any}; kwargs)
+    clean(
+        root::AbstractString=".";
+        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
+        erase::Extension=none,
+        logfile::String = "clean.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String, Any}
 
-Cleans a product folder recursively from all content not listed in the inventory, i.e. not
-available on the ICARE server. The function has to methods, you can either provide an
+    clean(
+        inventory::SortedDict{String, Any};
+        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
+        erase::Extension=none,
+        logfile::String = "clean.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String, Any}
+
+Clean a product folder recursively from all content not listed in the inventory, i.e. not
+available on the ICARE server. The function has two methods – you can either provide an
 `AbstractString` with the path of the product folder or the inventory as `SortedDict` of the
-product.
+product. Both methods return the `inventory` for reference.
 
 # Keyword Arguments
 
@@ -17,47 +30,72 @@ product.
 - `erase::Extension`: Allows to clean up the database itself. You can choose to erase
   `original` files (defined by `"ext"` in the inventory metadata), `converted` files
   (defined by `"newext"` in the inventory metadata) or `none` of the file types.
+- `logfile::String`: The name of the log file (default: `"clean.log"`; the name will be appended
+  by the current date and time).
+- `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 """
 function clean end
 
 function clean(
     root::AbstractString=".";
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    erase::Extension=none
-)::Nothing
+    erase::Extension=none,
+    logfile::String = "clean.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String, Any}
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
     inventory = SortedDict{String, Any}()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
-    clean(inventory; keepext, erase)
+    clean(inventory; keepext, erase, logfile, loglevel)
 end
 
 function clean(
     inventory::SortedDict{String, Any};
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    erase::Extension=none
-)::Nothing
-    # Rearrange inventory for better processing
-    database = inventory_dates(inventory, erase)
-    # Scan inventory for additional files and folders
-    root = inventory["metadata"]["local"]["path"]
-    extra = localscan(database, root, setdiff)
-    # Keep specified extensions
-    if !isempty(keepext)
-        keepext isa Vector || (keepext = [keepext])
-        for ext in keepext
-            filter!(!endswith(ext), extra.files)
+    erase::Extension=none,
+    logfile::String = "clean.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String, Any}
+    # Start
+    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    @info "logging to '$logfile'"
+    open(logfile, "w") do logio
+        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        # Rearrange inventory for better processing
+        @info "analyse inventory and local database"
+        database = inventory_dates(inventory, erase)
+        # Scan inventory for additional files and folders
+        root = inventory["metadata"]["local"]["path"]
+        extra = localscan(database, root, setdiff)
+        # Remove current logfile from extra files
+        filter!(!isequal(logfile), extra.files)
+        # Keep specified extensions
+        if !isempty(keepext)
+            keepext isa Vector || (keepext = [keepext])
+            for ext in keepext
+                filter!(!endswith(ext), extra.files)
+            end
+        end
+        # Clean up local database
+        if confirm(extra)
+            Logging.with_logger(logger) do
+                s = length(extra.files) == 1 ? "" : "s"
+                s_ = length(extra.folders) == 1 ? "" : "s"
+                @warn("cleaning $(length(extra.files)) file$s and $(length(extra.folders)) folder$s_",
+                    extra.files, extra.folders)
+            end
+            rm.(extra.files, force=true)
+            rm.(extra.folders, recursive=true, force=true)
+        else
+            @info "aborting clean-up"
+            Logging.with_logger(logger) do
+                @info "cleaning cancelled"
+            end
         end
     end
-    # Clean up local database
-    if confirm(extra)
-        rm.(extra.files, force=true)
-        rm.(extra.folders, recursive=true, force=true)
-    else
-        @info "aborting cleanup"
-    end
-    return
+    return inventory
 end
 
 

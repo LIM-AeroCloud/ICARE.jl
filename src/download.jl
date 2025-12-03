@@ -158,7 +158,7 @@ function sftp_download(
 end #function ftp_download
 
 
-## Functions for syncing with server and setting up a local structure, and
+## Functions for syncing with server and setting up a local structure
 
 """
     icare_connect(
@@ -342,7 +342,7 @@ function sync!(
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
-            convert!(inventory, file, convert, logger)
+            _convert!(inventory, file, convert, logger)
         catch error
             rethrow(error)
             lock(thread) do
@@ -362,7 +362,7 @@ function sync!(
             update_stats!(icare, inventory, file, resync, logger)
             try
                 download(icare, inventory, file, update)
-                convert!(inventory, file, convert, logger)
+                _convert!(inventory, file, convert, logger)
             catch error
                 lock(thread) do
                     #* Log second download attempt errors
@@ -479,86 +479,29 @@ function downloaded(
 end
 
 
-"""
-    convert!(
-        inventory::SortedDict,
-        file::File,
-        convert::Bool,
-        logged::Logging.ConsoleLogger
-    )
-
-Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
-up-to-date or it was opted out to `convert` the file. Log events to `logger`.
-"""
-function convert!(
-    inventory::SortedDict,
-    file::File,
-    convert::Bool,
-    logger::Logging.ConsoleLogger
-)::Nothing
-    converted!(inventory, file, convert) && return
-    rm(file.location.target, force=true)
-    convert_file(file.location.download, file.location.target, convert)
-    set_converted_size!(inventory, file, convert, logger)
-end
-
-
-"""
-    converted!(inventory::SortedDict, file::File, convert::Bool) -> Bool
-
-Check, whether the size of the converted `file` is known in the `inventory` and matches the
-actual file size. Return also `true`, if it was opted out to `convert` the file.
-"""
-function converted!(inventory::SortedDict, file::File, convert::Bool)::Bool
-    if convert && haskey(inventory["dates"][file.date][file.name], "size"*file.newext)
-        # Compare file size with inventory
-        inventory["dates"][file.date][file.name]["size"*file.newext] == filesize(file.location.target)
-    else
-        return !convert
-    end
-end
-
-
-"""
-    set_converted_size!(
-        inventory::SortedDict,
-        file::File,
-        convert::Bool,
-        logger::Logging.ConsoleLogger
-    )
-
-Set the size of the converted `file` in the `inventory` and mark the `inventory` as updated.
-Log events to `logger`.
-"""
-function set_converted_size!(
-    inventory::SortedDict,
-    file::File,
-    convert::Bool,
-    logger::Logging.ConsoleLogger
-)::Nothing
-    # Initial checks
-    convert || return
-    haskey(inventory["dates"][file.date][file.name], "size"*file.newext) && return
-    if !isfile(file.location.target)
-        lock(thread) do
-            # Log error, if converted file does not exist
-            Logging.with_logger(logger) do
-                @error("cannot determine size of '$(file.location.target)'",
-                    _module=nothing, _file=nothing, _line=nothing)
-            end
-        end
-        return
-    end
-    # Save converted file size to inventory
-    lock(thread) do
-        inventory["dates"][file.date][file.name]["size"*file.newext] = filesize(file.location.target)
-        inventory["metadata"]["database"]["updated"] = Dates.now()
-    end
-    return
-end
-
-
 ## Functions for logging
+
+"""
+    init_logging(logfile::String, rootdir::String, loglevel::Symbol) -> Tuple{String,Logging.LogLevel}
+
+Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
+`rootdir`. Return the updated logfile and the `loglevel` as `Logging.LogLevel`.
+"""
+function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
+    # Set log level
+    level = try getproperty(Logging, loglevel)
+    catch
+        @warn "unknown log level $loglevel; using Debug as default" _module=nothing _file=nothing _line=nothing
+        loglevel = :Debug
+    end
+    # Define log file with timestamp
+    contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
+    logfile, logext = splitext(logfile)
+    logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
+    logfile = expanduser(logfile)
+    return logfile, level
+end
+
 
 """
     log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime)

@@ -23,7 +23,7 @@ import Base.Threads: @threads
 const thread = ReentrantLock()
 
 # Export functions and types
-export sftp_download, hdfupgrade, clean, Extension, original, converted
+export sftp_download, convert, convert!, clean, Extension, original, converted
 
 # Include source files
 include("types.jl") # types and exceptions

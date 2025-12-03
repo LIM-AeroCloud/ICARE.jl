@@ -99,6 +99,28 @@ function File(
     File(name, ext, newext, date, (;target, download, remote), (dst=path, src=joinpath(icare.uri, datadir...).path))
 end
 
+
+"""
+    File(path::AbstractString) -> File
+
+Constructor for a `File` struct from an absolute or relative `path` including the file name
+with the original extension. Further information is derived from the inventory metadata.
+"""
+function File(path::AbstractString)::File
+    path = realpath(path)
+    parts = splitpath(path)
+    name, ext = splitext(basename(path))
+    newext = inventory["metadata"]["file"]["newext"]
+    date = Date(parts[end-1], "yyyy_mm_dd")
+    target = splitext(path)[1]*newext
+    uri = joinpath(SFTP.URI(inventory["metadata"]["remote"]["productpath"]), parts[end-2:end]...)
+    remote = uri.path
+    src = split(remote, "/")[1:end-1]
+    src = join(src, "/")
+    dst = joinpath(parts[1:end-1]...)
+    File(name, ext, newext, date, (;target, download=path, remote), (;dst, src))
+end
+
 ############################################################################################
 
 ## Enums
