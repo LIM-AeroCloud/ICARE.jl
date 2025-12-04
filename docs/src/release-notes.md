@@ -12,6 +12,10 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 ## Added
 
 - Improved error handling during download
+- Methods `convert`/`convert!` for batch conversions of inventory data files separated from
+  download sessions ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
+- Method `clean` to clean the product folder recursively from any files not belonging to the inventory
+  ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
 
 ## Changed
 
@@ -19,12 +23,19 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
   change depencies from `OrderedCollections` to `DataStructures` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
 - **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
-  file sizes of the original format and the size of already converted files; add a `version`
-  number to `metadata` to allow better tracking of changes in the inventory ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+  file sizes of the original format and the size of already converted files ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+- **Breaking:** add a `version` number to `metadata` to allow better tracking of changes in 
+  the inventory ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
 - **Breaking**: Rename `converted` field with the converted file size to `size.<ext>` in each date dict
 - Update dependencies in docs before using `make docs` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
 - Simplify `favicon`
 - Improved documentation and logging
+- Rename previous method `convert!` to `_convert!` to avoid conflicts with the new method and
+  leave the method internal and not part of the public API ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
+
+## Removed
+
+- Method `hdfupgrade` and all auxiliary code was removed and replaced by methods `convert` and `convert!`
 
 ## [v0.5.1](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.1) - 2025-09-07
 
