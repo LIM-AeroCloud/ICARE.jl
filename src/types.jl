@@ -104,9 +104,9 @@ end
     File(path::AbstractString) -> File
 
 Constructor for a `File` struct from an absolute or relative `path` including the file name
-with the original extension. Further information is derived from the inventory metadata.
+with the original extension. Further information is derived from the `inventory` metadata.
 """
-function File(path::AbstractString)::File
+function File(inventory::SortedDict{String, Any}, path::AbstractString)::File
     path = realpath(path)
     parts = splitpath(path)
     name, ext = splitext(basename(path))
