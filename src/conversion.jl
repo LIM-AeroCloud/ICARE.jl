@@ -26,7 +26,7 @@ function Base.convert(
     path = joinpath(root, ".inventory.yaml") |> realpath
     inventory = SortedDict{String, Any}()
     load_inventory!(inventory, path)
-    # Call the clean method for the inventory
+    # Call the conversion method for the inventory
     convert!(inventory; sizecheck, logfile, loglevel)
 end
 
@@ -84,7 +84,7 @@ end
         inventory::SortedDict,
         file::File,
         convert::Bool,
-        logged::Logging.ConsoleLogger
+        logger::Logging.ConsoleLogger
     )
 
 Convert the `file` to a new file format as defined in the `inventory` unless `file` is already

@@ -211,13 +211,13 @@ function confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}})::B
     if !isempty(extra.folders)
         printstyled("Folders:\n", color=:yellow, bold=true)
         print("- ")
-        println.(join(extra.folders |> collect |> sort, "\n- "))
+        println(join(extra.folders |> collect |> sort, "\n- "))
     end
     # List files
     if !isempty(extra.files)
         printstyled("Files:\n", color=:yellow, bold=true)
         print("- ")
-        println.(join(extra.files |> collect |> sort, "\n- "))
+        println(join(extra.files |> collect |> sort, "\n- "))
     end
     # File prompt for confirmation
     printstyled("Proceed (yes/no)? ", color=:yellow, bold=true)
