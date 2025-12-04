@@ -104,7 +104,7 @@ end
         inventory::SortedDict{String, Any}, erase::Extension
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
-Rearrange the `inventory` for better processing as a named tuples with sets of absolute file and
+Rearrange the `inventory` for better processing as a named tuple with sets of absolute file and
 folder paths. Either `original` or `converted` files might be removed based on the choice of
 `erase`.
 """

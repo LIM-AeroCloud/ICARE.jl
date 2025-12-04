@@ -2,7 +2,7 @@
 
 ## Analysing the inventory
 
-The structure and files including file stats are saved in an inventory that is return by all
+The structure and files including file stats are saved in an inventory that is returned by all
 API functions [`sftp_download`](@ref), [`clean`](@ref), [`convert!`](@ref), and [`convert`](@ref).
 The inventory is a `SortedDict` that saves relevant data such as the available data range,
 the file count and the overall size in the metadata. Stats about the data file are kept in the
@@ -10,13 +10,13 @@ the file count and the overall size in the metadata. Stats about the data file a
 
 ## Manipulating the inventory
 
-Several functions exist to help shaping the database to the users need. 
+Several functions exist to help shaping the database to the users need.
 
 ### Batch conversions
 
 Methods [`convert`](@ref)/[`convert!`](@ref) can be used to convert data files to a new file format.
 By default, HDF4 files are upgraded to HDF5. The same could be achieved by re-running
-[`sftp_download`](@ref) with `covert` option set to `true`. If the original files are already
+[`sftp_download`](@ref) with `convert` option set to `true`. If the original files are already
 downloaded, then [`sftp_download`](@ref) will not re-download these files and just convert them.
 If you have already loaded the inventory, then [`convert!`](@ref) is the more performant option;
 [`convert`](@ref) is a convenience method that will load the inventory first and then call
@@ -49,7 +49,7 @@ overwritten.
 !!! warning
     The [`Extension`](@ref) enum together with the values `original` and `converted` is exported
     by _ICARE.jl_. Do not unintentionally overwrite them or you will get error messages, when
-    tyring to set the `erase` option in [`clean`](@ref).
+    trying to set the `erase` option in [`clean`](@ref).
 
 !!! danger
     If the original files are removed during [`clean`](@ref), they are permanently lost and

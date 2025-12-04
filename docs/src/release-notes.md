@@ -14,7 +14,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Improved error handling during download
 - Methods `convert`/`convert!` for batch conversions of inventory data files separated from
   download sessions ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
-- Method `clean` to clean the product folder recursively from any files not belong to the inventory
+- Method `clean` to clean the product folder recursively from any files not belonging to the inventory
   ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
 
 ## Changed

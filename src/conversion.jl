@@ -169,7 +169,7 @@ end
     )
 
 Convert all `files` part of the `inventory` to a new format as defined in the `inventory`.
-Conversions are skipped, if files of the new format already exist and either ther size matches
+Conversions are skipped, if files of the new format already exist and either their size matches
 the one listed in the `inventory` or `sizecheck` is set to `false`. Log events to `logger`.
 """
 function conversion(

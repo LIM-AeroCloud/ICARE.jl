@@ -140,11 +140,11 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
     with the conversion script (or compiled binary) in the assets folder to share it with others.
 
 !!! tip
-    If, you want both formats saved on your local machine, download the original format with
+    If you want both formats saved on your local machine, download the original format with
     [`sftp_download`](@ref) by setting `convert` to `false`. Use the [`convert!`](@ref) method
     to update the file types of the downloaded method.
 
-    If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads 
+    If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads
     are not kept. If you later decide, to keep only one format, you can use function [`clean`](@ref)
     to delete one or the other format.
 
