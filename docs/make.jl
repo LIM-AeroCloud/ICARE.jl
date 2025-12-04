@@ -23,6 +23,7 @@ makedocs(
     pages=[
         "Home" => "index.md",
         "Download" => "download.md",
+        "Inventory" => "inventory.md",
         "Adaptation" => "adaptation.md",
         "Release notes" => "release-notes.md",
         "Index" => "register.md"

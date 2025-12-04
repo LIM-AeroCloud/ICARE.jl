@@ -125,30 +125,30 @@ in the log file. The `Debug` level is used to inform about completed downloads.
 
 ### During download
 
-During an [`sftp_download`](@ref), you can set the `convert` keyword argument to `true`. 
-By default, this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4 
+During an [`sftp_download`](@ref), you can set the `convert` keyword argument to `true`.
+By default, this will save downloads in the HDF5 (`.h5`) format instead of the expected HDF4
 (`.hdf`) format. You can overload the [`ICARE.convert_file`](@ref) function, see section about
 [Converting to other file formats](@ref). However, you are allowed to save only one other format.
 
 !!! warning "Important Notice"
     Data conversion is only available under Linux and MacOS, not under Windows. If you want
-    to use *ICARE.jl* under Windows with data conversion, you need to write your own conversion
+    to use _ICARE.jl_ under Windows with data conversion, you need to write your own conversion
     routine and overload [`ICARE.convert_file`](@ref) and [`ICARE.newext`](@ref) (see section
     about [Converting to other file formats](@ref)).
 
+    If you have written a conversion routine for Windows, consider a pull request to this repo
+    with the conversion script (or compiled binary) in the assets folder to share it with others.
+
 !!! tip
     If, you want both formats saved on your local machine, download the original format with
-    [`sftp_download`](@ref) by setting `convert` to `false` and re-run [`sftp_download`](@ref)
-    with `convert=true`.
-    The second run will only convert the files without re-downloading them and also keep the
-    original downloads. If your run [`sftp_download`](@ref) with `convert=true` the first time,
-    original downloads are not kept.
+    [`sftp_download`](@ref) by setting `convert` to `false`. Use the [`convert!`](@ref) method
+    to update the file types of the downloaded method.
+
+    If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads 
+    are not kept. If you later decide, to keep only one format, you can use function [`clean`](@ref)
+    to delete one or the other format.
 
 ### Separate file conversions
 
-Routines related to file conversion without download from the AERIS/ICARE server are
-being refactored. **They may or may not work at current.**
-
-```@docs
-hdfupgrade
-```
+Routines exist to do batch conversions of the existing files and are described in the section
+about [Analysing and manipulating the inventory](@ref).

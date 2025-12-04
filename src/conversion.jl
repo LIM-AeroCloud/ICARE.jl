@@ -16,7 +16,7 @@ which will reconvert any file whose size differs from that listed in the invento
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
 """
-function convert(
+function Base.convert(
     root::AbstractString=".";
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
