@@ -187,10 +187,10 @@ function _localscan!(
     files = filter(isfile, content)
     folders = filter(isdir, content)
     # Save extra files and folders
-    [push!(extra.folders, f) for f in combine(folders, database.folders)]
-    [push!(extra.files, f) for f in combine(files, database.files)]
+    foreach(f -> push!(extra.folders, f), combine(folders, database.folders))
+    foreach(f -> push!(extra.files, f), combine(files, database.files))
     # Search recursively in database folders
-    [_localscan!(database, extra, i, combine) for i in intersect(folders, database.folders)]
+    foreach(i -> _localscan!(database, extra, i, combine), intersect(folders, database.folders))
     return
 end
 
@@ -219,7 +219,7 @@ function confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}})::B
         print("- ")
         println(join(extra.files |> collect |> sort, "\n- "))
     end
-    # File prompt for confirmation
+    # Prompt for confirmation
     printstyled("Proceed (yes/no)? ", color=:yellow, bold=true)
     proceed = readline()
     # Return user decision
