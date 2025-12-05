@@ -28,6 +28,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Improved documentation and logging
 - Rename previous method `convert!` to `_convert!` to avoid conflicts with the new method and
   leave the method internal and not part of the public API ([#16])
+- **Breaking:** Rename `"productpath"` to `"path"` in `inventory["metadata"]["remote"]` to be more
+  in line with the simpler `"local"` naming scheme ([#24])
 
 ## Removed
 

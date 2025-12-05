@@ -113,7 +113,7 @@ function File(inventory::SortedDict{String, Any}, path::AbstractString)::File
     newext = inventory["metadata"]["file"]["newext"]
     date = Date(parts[end-1], "yyyy_mm_dd")
     target = splitext(path)[1]*newext
-    uri = joinpath(SFTP.URI(inventory["metadata"]["remote"]["productpath"]), parts[end-2:end]...)
+    uri = joinpath(SFTP.URI(inventory["metadata"]["remote"]["path"]), parts[end-2:end]...)
     remote = uri.path
     src = split(remote, "/")[1:end-1]
     src = join(src, "/")

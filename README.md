@@ -24,13 +24,12 @@ Installation
 ------------
 
 ICARE.jl is an unregistered Julia package, but can be installed with the package manager. It
-also includes an unregistered dependency `SFTP.jl`, which needs to be install first. For both
-packages, switch to the `main` branch to only obtain stable versions.
+also includes an unregistered dependency `SFTP.jl`, which needs to be install first.
 
 ```julia
 julia> ]
-pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git#main
-pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
+pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git
+pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git
 pkg> ← (backspace)
 julia> using ICARE
 ```
@@ -134,45 +133,12 @@ sftp_download(
 )
 ```
 
-HDF4 to HDF5 conversion
------------------------
+Tools to analyse and manipulate the database
+--------------------------------------------
 
-> **Note:** File conversion is currently being refactored and may or may not currently work.
-
-```julia
-function hdfupgrade(
-  rootdir::String=".",
-  ext::Union{String,Vector{String}}=[".hdf", ".h4", ".hdf4"];
-  recursive::Bool=true,
-  h5exists::Symbol=:skip,
-  h5ext::String=".h5",
-  clean::Bool=false,
-  logfile::String=joinpath(rootdir, "hdfupgrades.log"),
-  loglevel::Symbol=:Debug
-)::Nothing
-```
-
-Function `hdfupgrade` converts HDF4 to HDF5 files in the given `rootdir`.
-Files ending with `.hdf`, `.h4` or `.hdf4` will be converted to `.h5` files,
-but file extensions can be altered with the `ext` argument or `h5ext` keyword argument.
-Unless `recursive` is set to `false`, `hdfupgrade` will convert all files with the 
-specified extensions in the `rootdir` and all containing subfolders.
-After conversion, HDF4 files may be deleted setting the `clean` flag to `true` and
-confirming with `"yes"` after being prompted to a confirmation at the beginning of the
-function call.
-
-If an h5 file already exists, the following options exist for the conversion
-(given as `Symbol` to the `h5exists` flag):
-
-- `skip` (default): skips conversion and leaves existing HDF5 file
-- `overwrite`: overwrites the existing HDF5 file
-- `cancel`: stops on the first existing HDF5 file
-- `abort`: same as `cancel`, but does not convert HDF4 files up to this point
-
-Log files for the conversion will be created. The path and file name can be specified
-with the `logfile` keyword. A timestamp will be appended to the logfile name, so you
-can reuse `logfile` names. By default, `hdfupgrades_<timestamp>.log` will be saved to
-the `rootdir`.
+Further routines exist, to `clean` the database from any objects not listed in the inventory,
+or for batch conversions of the downloaded files (default routines upgrade HDF4 to HDF5 files).
+See, the [documentation][docs-stable-url] for more details.
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://LIM-AeroCloud.github.io/ICARE.jl/stable/

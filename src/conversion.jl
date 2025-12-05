@@ -186,7 +186,7 @@ function conversion(
         input = setdiff(getindex.(splitext.(input), 1),
             getindex.(splitext.(filter(endswith(newext), files)), 1)).*ext
     end
-    input = File.(inventory, input)
+    input = File.(Ref(inventory), input)
     t0 = Dates.now()
     Logging.with_logger(logger) do
         @info "starting up to $(Threads.nthreads()) parallel conversions of $(length(input)) files @$t0"

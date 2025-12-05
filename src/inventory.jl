@@ -72,6 +72,11 @@ function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
         "created" => inventory["metadata"]["database"]["created"],
         "updated" => inventory["metadata"]["database"]["updated"]
     )
+    inventory["metadata"]["remote"] = OrderedDict(
+        "product" => inventory["metadata"]["remote"]["product"],
+        "path" => inventory["metadata"]["remote"]["path"],
+        "root" => inventory["metadata"]["remote"]["root"]
+    )
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     return
@@ -124,9 +129,9 @@ function new_inventory!(
             "path" => realpath(joinpath(root, product)),
             "root" => realpath(root)
         ),
-        "remote" => SortedDict{String,String}(
+        "remote" => OrderedDict{String,String}(
             "product" => product,
-            "productpath" => icare.uri.path,
+            "path" => icare.uri.path,
             "root" => dirname(icare)
         ),
         "version" => v"1.0.0"
