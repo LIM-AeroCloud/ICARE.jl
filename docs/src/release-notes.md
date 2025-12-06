@@ -22,16 +22,23 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - `sftp_download` now returns the inventory for further exploration ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
   change depencies from `OrderedCollections` to `DataStructures` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
-- **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
-  file sizes of the original format and the size of already converted files ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
-- **Breaking:** add a `version` number to `metadata` to allow better tracking of changes in 
-  the inventory ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
-- **Breaking**: Rename `converted` field with the converted file size to `size.<ext>` in each date dict
-- Update dependencies in docs before using `make docs` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+- Updated inventory metadata ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
+  - **Breaking:** Added `size` and `converted size` fields to `metadata/database` with the overall
+    file sizes of the original format and the size of already converted files ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+  - Consider folders with a size of `4K` instead of `0` to estimate the maximum database size
+  - **Breaking:** add a `version` number to `metadata` to allow better tracking of changes in
+    the inventory ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+  - **Breaking**: Rename `converted` field with the converted file size to `size.<ext>` in each date dict
+  - Update dependencies in docs before using `make docs` ([#18](https://github.com/LIM-AeroCloud/ICARE.jl/issues/18))
+  - **Breaking:** Add `"downloaded size"` entry to inventory database metadata to monitor the 
+    actual downloaded part of the database ([#26](https://github.com/LIM-AeroCloud/ICARE.jl/issues/26))
 - Simplify `favicon`
 - Improved documentation and logging
 - Rename previous method `convert!` to `_convert!` to avoid conflicts with the new method and
   leave the method internal and not part of the public API ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
+- **Breaking:** Rename `"productpath"` to `"path"` in `inventory["metadata"]["remote"]` to be more
+  in line with the simpler `"local"` naming scheme ([#24](https://github.com/LIM-AeroCloud/ICARE.jl/issues/24))
+- 
 
 ## Removed
 
