@@ -34,7 +34,6 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   leave the method internal and not part of the public API ([#16])
 - **Breaking:** Rename `"productpath"` to `"path"` in `inventory["metadata"]["remote"]` to be more
   in line with the simpler `"local"` naming scheme ([#24])
-- 
 
 ## Removed
 

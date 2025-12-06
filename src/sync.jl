@@ -158,17 +158,17 @@ function localscan(
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Setup
     root = realpath(root)
-    extra = (folders = Set{String}(), files = Set{String}())
+    scanned = (folders = Set{String}(), files = Set{String}())
     # Get files and folders within root recursively
-    _localscan!(database, extra, root, combine)
-    return extra
+    _localscan!(database, scanned, root, combine)
+    return scanned
 end
 
 
 """
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        extra::@NamedTuple{folders::Set{String},files::Set{String}},
+        scanned::@NamedTuple{folders::Set{String},files::Set{String}},
         root::String,
         combine::Function
     )
@@ -178,7 +178,7 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 """
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    extra::@NamedTuple{folders::Set{String},files::Set{String}},
+    scanned::@NamedTuple{folders::Set{String},files::Set{String}},
     root::String,
     combine::Function
 )::Nothing
@@ -187,10 +187,10 @@ function _localscan!(
     files = filter(isfile, content)
     folders = filter(isdir, content)
     # Save extra files and folders
-    foreach(f -> push!(extra.folders, f), combine(folders, database.folders))
-    foreach(f -> push!(extra.files, f), combine(files, database.files))
+    foreach(f -> push!(scanned.folders, f), combine(folders, database.folders))
+    foreach(f -> push!(scanned.files, f), combine(files, database.files))
     # Search recursively in database folders
-    foreach(i -> _localscan!(database, extra, i, combine), intersect(folders, database.folders))
+    foreach(i -> _localscan!(database, scanned, i, combine), intersect(folders, database.folders))
     return
 end
 
