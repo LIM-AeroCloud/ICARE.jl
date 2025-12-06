@@ -66,11 +66,17 @@ function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
         "dates" => inventory["metadata"]["database"]["dates"],
         "missing" => inventory["metadata"]["database"]["missing"],
         "size" => inventory["metadata"]["database"]["size"],
+        "downloaded size" => inventory["metadata"]["database"]["downloaded size"],
         "converted size" => inventory["metadata"]["database"]["converted size"],
         "start" => inventory["metadata"]["database"]["start"],
         "stop" => inventory["metadata"]["database"]["stop"],
         "created" => inventory["metadata"]["database"]["created"],
         "updated" => inventory["metadata"]["database"]["updated"]
+    )
+    inventory["metadata"]["remote"] = OrderedDict(
+        "product" => inventory["metadata"]["remote"]["product"],
+        "path" => inventory["metadata"]["remote"]["path"],
+        "root" => inventory["metadata"]["remote"]["root"]
     )
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
@@ -108,6 +114,7 @@ function new_inventory!(
             "dates" => 0,
             "missing" => 0,
             "size" => 0,
+            "downloaded size" => 0,
             "converted size" => 0,
             "start" => Date(9999),
             "stop" => Date(0),
@@ -124,9 +131,9 @@ function new_inventory!(
             "path" => realpath(joinpath(root, product)),
             "root" => realpath(root)
         ),
-        "remote" => SortedDict{String,String}(
+        "remote" => OrderedDict{String,String}(
             "product" => product,
-            "productpath" => icare.uri.path,
+            "path" => icare.uri.path,
             "root" => dirname(icare)
         ),
         "version" => v"1.0.0"
@@ -177,6 +184,7 @@ function filter_years!(
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
         inventory["metadata"]["database"]["size"] = 0
+        inventory["metadata"]["database"]["downloaded size"] = 0
         inventory["metadata"]["database"]["converted size"] = 0
         inventory["metadata"]["database"]["start"] = Date(9999)
         inventory["metadata"]["database"]["stop"] = Date(0)
@@ -518,7 +526,12 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     filedata = [d for date in keys(inventory["dates"]) for d in values(inventory["dates"][date])]
     inventory["metadata"]["file"]["conversions"] =
         haskey.(filedata, "size"*inventory["metadata"]["file"]["newext"]) |> count
-    inventory["metadata"]["database"]["size"] = get.(filedata, "size", 0) |> sum
+    foldersize = 4096*(length(inventory["dates"]) + length(Dates.year.(keys(inventory["dates"])) |> unique))
+    inventory["metadata"]["database"]["size"] = sum(get.(filedata, "size", 0)) + foldersize
+    db = inventory_dates(inventory, none)
+    data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
+    inventory["metadata"]["database"]["downloaded size"] = 4096*length(data.folders) +
+        sum(filesize.(data.files |> filter(endswith(".hdf"))))
     inventory["metadata"]["database"]["converted size"] =
         get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()
