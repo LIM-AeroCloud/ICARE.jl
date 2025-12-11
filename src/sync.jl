@@ -1,5 +1,6 @@
 ## Routines related to syncing local and remote directories
 
+## API functions
 """
     clean(
         root::AbstractString=".";
@@ -98,6 +99,45 @@ function clean(
     return inventory
 end
 
+
+"""
+    ignore(
+        inventory::SortedDict{String, Any},
+        dates::AbstractDict{Date, Any}
+    ) -> SortedDict{String,Any}
+
+Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
+"""
+function ignore(
+    inventory::SortedDict{String, Any},
+    dates::AbstractDict{Date, Any}
+)::SortedDict{String, Any}
+    # Setup
+    t0 = Dates.now()
+    if !haskey(inventory, "ignore")
+        inventory["ignore"] = SortedDict{Date, Any}()
+    end
+    # Loop over dates and granules to be ignored
+    for (date, granule) in dates
+        haskey(inventory["dates"], date) || continue
+        granule isa String && (granule = [granule])
+        filter!(g->haskey(inventory["dates"][date], g), granule)
+        @show granule
+        for g in granule
+            # Move all valid granules to the ignore section
+            haskey(inventory["ignore"], date) || (inventory["ignore"][date] = SortedDict{String,Any}())
+            inventory["ignore"][date][g] = inventory["dates"][date][g]
+            delete!(inventory["dates"][date], g)
+            inventory["metadata"]["database"]["updated"] = Dates.now()
+        end
+    end
+    # Save inventory if updated
+    save_inventory(inventory, t0)
+    return inventory
+end
+
+
+## Helper functions to scan and manipulate the database
 
 """
     inventory_dates(

@@ -47,7 +47,14 @@ function product_database!(
         new_inventory!(icare, inventory, root, product, logger)
     end
     sync_database!(icare, inventory, years, daterange, convert, logger)
+    if haskey(inventory, "ignore")
+        ignored = keys(inventory["ignore"]) |> collect |> unique .|> Dates.year
+        intersect!(ignored, years)
+        filter!(date_in_years(ignored), keys(inventory["dates"]))
+    end
 end
+
+date_in_years(years::Vector{Int})::Function = date::Date -> Dates.year(date) in years
 
 
 """
