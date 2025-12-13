@@ -8,7 +8,7 @@
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict{String,<:Any}
 
 Convert all files in `root` and part of the inventory to a new format as defined in the inventory.
 If files of the new format already exist, they are skipped unless `sizecheck` is set to `true`,
@@ -21,10 +21,10 @@ function Base.convert(
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict{String,<:Any}
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String, Any}()
+    inventory = SortedDict{String,<:Any}()
     load_inventory!(inventory, path)
     # Call the conversion method for the inventory
     convert!(inventory; sizecheck, logfile, loglevel)
@@ -33,11 +33,11 @@ end
 
 """
     convert!(
-        inventory::SortedDict{String, Any};
+        inventory::SortedDict{String,<:Any};
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict{String,<:Any}
 
 Convert all files in the local database and part of the `inventory` to a new format as defined
 in the `inventory`. If files of the new format already exist, they are skipped unless `sizecheck`
@@ -47,11 +47,11 @@ Logging is written to `logfile` with the specified `loglevel`. A timestamp is ad
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
 """
 function convert!(
-    inventory::SortedDict{String, Any};
+    inventory::SortedDict{String,<:Any};
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict{String,<:Any}
     # Start
     t0 = Dates.now()
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
@@ -162,7 +162,7 @@ end
 
 """
     conversion(
-        inventory::SortedDict{String, Any},
+        inventory::SortedDict{String,<:Any},
         files::Set{String},
         sizecheck::Bool,
         logger::Logging.ConsoleLogger
@@ -173,7 +173,7 @@ Conversions are skipped, if files of the new format already exist and either the
 the one listed in the `inventory` or `sizecheck` is set to `false`. Log events to `logger`.
 """
 function conversion(
-    inventory::SortedDict{String, Any},
+    inventory::SortedDict{String,<:Any},
     files::Set{String},
     sizecheck::Bool,
     logger::Logging.ConsoleLogger

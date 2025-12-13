@@ -46,12 +46,7 @@ function product_database!(
         # Init empty inventory, if yaml is missing
         new_inventory!(icare, inventory, root, product, logger)
     end
-    sync_database!(icare, inventory, years, daterange, convert, logger)
-    if haskey(inventory, "ignore")
-        ignored = keys(inventory["ignore"]) |> collect |> unique .|> Dates.year
-        intersect!(ignored, years)
-        filter!(date_in_years(ignored), keys(inventory["dates"]))
-    end
+    sync_database!(icare, inventory, years, daterange, convert, resync, logger)
 end
 
 date_in_years(years::Vector{Int})::Function = date::Date -> Dates.year(date) in years
@@ -116,8 +111,8 @@ function new_inventory!(
     end
     inventory["dates"] = SortedDict{Date,SortedDict}()
     inventory["gaps"] = Vector{Date}()
-    inventory["metadata"] = SortedDict{String,Any}(
-        "database" => OrderedDict{String,Any}(
+    inventory["metadata"] = SortedDict{String,<:Any}(
+        "database" => OrderedDict{String,<:Any}(
             "dates" => 0,
             "missing" => 0,
             "size" => 0,
@@ -128,7 +123,7 @@ function new_inventory!(
             "created" => Dates.now(),
             "updated" => Dates.now()
         ),
-        "file" => SortedDict{String,Any}(
+        "file" => SortedDict{String,<:Any}(
             "conversions" => 0,
             "count" => 0,
             "ext" => "",
@@ -208,13 +203,14 @@ end
         inventory::SortedDict,
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
+        resync::Bool,
         convert::Bool,
         logger::Logging.ConsoleLogger
     )
 
 Sync the `inventory` with the `icare` server for the given `daterange` and `years`.
 Consider conversion to a new file format based on the `convert` option.
-Log events to `logger`.
+Ensure converted file sizes are not lost during `resync`. Log events to `logger`.
 """
 function sync_database!(
     icare::SFTP.Client,
@@ -222,6 +218,7 @@ function sync_database!(
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
+    resync::Bool,
     logger::Logging.ConsoleLogger
 )::Nothing
     # Monitor updates
@@ -237,18 +234,29 @@ function sync_database!(
         isempty(dates) && continue
         #* Loop over dates in the current year and add missing dates to inventory
         pm.@showprogress dt=0.1 desc="$year:" for date in dates
-            updated |= new_date!(inventory, date)
-            updated |= remotefiles!(icare, inventory, date)
+            updated |= remotefiles!(icare, inventory, date, resync)
         end
         # Ensure complete years get saved in the local inventory, if something during database setups happens
         updated && (inventory["metadata"]["database"]["updated"] = Dates.now())
         inventory["metadata"]["database"]["start"] = minimum(keys(inventory["dates"]))
         inventory["metadata"]["database"]["stop"] = maximum(keys(inventory["dates"]))
     end
-    # Save extension for conversion to inventory
+    # Save extension types to inventory
+    ext!(icare, inventory)
     newext!(inventory, convert)
     # Delete possible temporary inventory data
     delete!(inventory, "temp")
+    # Ignore flagged granules
+    if resync && haskey(inventory, "ignore")
+        for date in values(inventory["ignore"]), granule in keys(date)
+            if haskey(inventory["dates"][date], granule)
+                delete!(inventory["dates"][date], granule)
+            end
+            if isempty(inventory["dates"][date])
+                delete!(inventory["dates"], date)
+            end
+        end
+    end
     # Save data gaps to inventory
     data_gaps!(inventory)
     display_gaps(inventory, daterange, logger)
@@ -257,6 +265,23 @@ function sync_database!(
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
+    return
+end
+
+
+"""
+    ext!(icare::SFTP.Client, inventory::SortedDict)
+
+Add the original file extension to the inventory metadata if missing.
+"""
+function ext!(icare::SFTP.Client, inventory::SortedDict)::Nothing
+    isempty(inventory["metadata"]["file"]["ext"]) || return
+    # Get first date in inventory
+    d = inventory["dates"] |> first |> first
+    # Check folder of first date for file extension
+    stats = SFTP.statscan(icare, Dates.format(d, "yyyy/yyyy_mm_dd"))
+    ext = splitext(stats[1].desc)[2]
+    inventory["metadata"]["file"]["ext"] = ext
     return
 end
 
@@ -293,51 +318,42 @@ end
     remotefiles!(
         icare::SFTP.Client,
         inventory::SortedDict,
-        date::Date
+        date::Date,
+        resync::Bool
     ) -> Bool
 
 Add file stats for all granules of the `date` based on the `icare` server data. File stats are
-only added for dates with no file data. Indicate updates in the `inventory` by the returned `Bool`.
+only added for dates not previously checked. Ensure proper data recovery during `resync`.
+Indicate updates in the `inventory` by the returned `Bool`.
 """
 function remotefiles!(
     icare::SFTP.Client,
     inventory::SortedDict,
-    date::Date
+    date::Date,
+    resync::Bool
 )::Bool
     # Entry checks
     date in inventory["gaps"] && return false
-    isempty(inventory["dates"][date]) || return false
+    haskey(inventory["dates"], date) && return false
     # Get stats of remote files (without the current and parent folders)
     stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
+    granules = SortedDict{String,SortedDict}()
     for stat in stats
         desc = splitext(stat.desc)[1]
-        inventory["dates"][date][desc] = SortedDict(
+        # Update inventory with current file/granule stats
+        granules[desc] = SortedDict(
             "size" => stat.size,
             "mtime" => Date(Dates.unix2datetime(stat.mtime))
         )
-        # Restore converted file sizes during resynchronisaton
-        if haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
+        # Restore converted file sizes during re-synchronisation
+        if resync && haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
             inventory["temp"][desc]["size"] == inventory["dates"][date][desc]["size"]
             newext = "size"*inventory["metadata"]["file"]["newext"]
-            inventory["dates"][date][desc][newext] = inventory["temp"][desc][newext]
+            granules[desc][newext] = inventory["temp"][desc][newext]
         end
     end
-    # Update inventory metadata
-    file = inventory["metadata"]["file"]
-    isempty(file["ext"]) && (file["ext"] = splitext(stats[1].desc)[2])
-    return true
-end
-
-
-"""
-    new_date!(inventory::SortedDict, date::Date) -> Bool
-
-Add the given `date` to the `inventory`, if missing.
-Return `true`, if the `date` was added, otherwise `false`.
-"""
-function new_date!(inventory::SortedDict, date::Date)::Bool
-    haskey(inventory["dates"], date) && return false
-    inventory["dates"][date] = SortedDict{String,SortedDict}()
+    # Only save complete dates to ensure no loss of data during crashes
+    inventory["dates"][date] = granules
     return true
 end
 

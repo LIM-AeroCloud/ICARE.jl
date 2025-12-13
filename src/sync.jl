@@ -8,15 +8,15 @@
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict{String,<:Any}
 
     clean(
-        inventory::SortedDict{String, Any};
+        inventory::SortedDict{String,<:Any};
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict{String,<:Any}
 
 Clean a product folder recursively from all content not listed in the inventory, i.e. not
 available on the ICARE server. The function has two methods – you can either provide an
@@ -43,22 +43,22 @@ function clean(
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict{String,<:Any}
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String, Any}()
+    inventory = SortedDict{String,<:Any}()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
     clean(inventory; keepext, erase, logfile, loglevel)
 end
 
 function clean(
-    inventory::SortedDict{String, Any};
+    inventory::SortedDict{String,<:Any};
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict{String,<:Any}
     # Start
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
@@ -101,38 +101,66 @@ end
 
 
 """
-    ignore(
-        inventory::SortedDict{String, Any},
-        dates::AbstractDict{Date, Any}
-    ) -> SortedDict{String,Any}
+    ignore!(
+        inventory::SortedDict{String,<:Any},
+        dates::AbstractDict{Date, Any};
+        logfile::String = "clean.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String,<:Any}
 
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
+Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
+file name automatically. The function returns the updated `inventory`.
 """
-function ignore(
-    inventory::SortedDict{String, Any},
-    dates::AbstractDict{Date, Any}
-)::SortedDict{String, Any}
+function ignore!(
+    inventory::SortedDict{String,<:Any},
+    dates::AbstractDict{Date,<:Any};
+    logfile::String = "clean.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String,<:Any}
     # Setup
     t0 = Dates.now()
     if !haskey(inventory, "ignore")
         inventory["ignore"] = SortedDict{Date, Any}()
     end
-    # Loop over dates and granules to be ignored
-    for (date, granule) in dates
-        haskey(inventory["dates"], date) || continue
-        granule isa String && (granule = [granule])
-        filter!(g->haskey(inventory["dates"][date], g), granule)
-        @show granule
-        for g in granule
-            # Move all valid granules to the ignore section
-            haskey(inventory["ignore"], date) || (inventory["ignore"][date] = SortedDict{String,Any}())
-            inventory["ignore"][date][g] = inventory["dates"][date][g]
-            delete!(inventory["dates"][date], g)
-            inventory["metadata"]["database"]["updated"] = Dates.now()
+    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    @info "logging to '$logfile'"
+    open(logfile, "w") do logio
+        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        # Loop over dates and granules to be ignored
+        for (date, granules) in dates
+            # Skip dates not in the inventory
+            if !haskey(inventory["dates"], date)
+                @warn "$date is not part of the inventory, only dates actually present in the inventory can be ignored"
+                Logging.with_logger(logger) do
+                    @warn "$date not found in inventory, skip ignoring"
+                end
+                continue
+            end
+            # Split granules in outliers, duplicates, and valid granules
+            granules isa AbstractString && (granules = [granules])
+            granules, outliers = split_outliers(granules, keys(inventory["dates"][date]))
+            if haskey(inventory["ignore"], date)
+                duplicates, outliers = split_outliers(outliers, keys(inventory["ignore"][date]))
+            else
+                duplicates = String[]
+                isempty(granules) || (inventory["ignore"][date] = SortedDict{String,<:Any}())
+            end
+            log_ignore(logger, outliers, "skipping granules not found in the inventory",
+                level=Logging.Warn)
+            log_ignore(logger, duplicates, "skipping granules that were already ignored")
+            for g in granules
+                # Move all valid granules to the ignore section
+                inventory["ignore"][date][g] = inventory["dates"][date][g]
+                delete!(inventory["dates"][date], g)
+            end
+            isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
+            msg = "ignoring granules on $date"
+            log_ignore(logger, granules, msg, msg*"; data moved from dates to ignore section")
         end
+        # Save inventory if updated
+        save_inventory(inventory, t0)
     end
-    # Save inventory if updated
-    save_inventory(inventory, t0)
     return inventory
 end
 
@@ -141,7 +169,7 @@ end
 
 """
     inventory_dates(
-        inventory::SortedDict{String, Any}, erase::Extension
+        inventory::SortedDict{String,<:Any}, erase::Extension
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Rearrange the `inventory` for better processing as a named tuple with sets of absolute file and
@@ -149,7 +177,7 @@ folder paths. Either `original` or `converted` files might be removed based on t
 `erase`.
 """
 function inventory_dates(
-    inventory::SortedDict{String, Any}, erase::Extension
+    inventory::SortedDict{String,<:Any}, erase::Extension
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Init
     folders, files = Set{String}(), Set{String}()
@@ -232,6 +260,56 @@ function _localscan!(
     # Search recursively in database folders
     foreach(i -> _localscan!(database, scanned, i, combine), intersect(folders, database.folders))
     return
+end
+
+
+"""
+    split_outliers(
+        container::AbstractVector{String},
+        comparison::AbstractSet{String}
+    ) -> Tuple{Vector{String},Vector{String}}
+
+Split the `container` of strings into two vectors: one with members present in the
+`comparison` set and one with outliers not present in the `comparison`.
+"""
+function split_outliers(container, comparison)::Tuple{Vector{String},Vector{String}}
+    members = Vector{String}()
+    outliers = Vector{String}()
+    for item in container
+        item in comparison ? push!(members, item) : push!(outliers, item)
+    end
+    return (members, outliers)
+end
+
+
+## Helper functions for user interaction
+
+"""
+    log_ignore(
+        logger::Logging.ConsoleLogger,
+        granules::Vector{String},
+        msg::AbstractString,
+        screenmsg::AbstractString="";
+        level::Logging.LogLevel=Logging.Info
+    )
+
+For non-empty `granules`, log the `msg` to the `logger` and print `screenmsg` to the console.
+If `screenmsg` is empty, `msg` is used for both logging and console output.
+The log level can be specified with `level`.
+"""
+function log_ignore(
+    logger::Logging.ConsoleLogger,
+    granules::Vector{String},
+    msg::AbstractString,
+    screenmsg::AbstractString="";
+    level::Logging.LogLevel=Logging.Info
+)::Nothing
+    isempty(granules) && return
+    isempty(screenmsg) && (screenmsg = msg)
+    Logging.@logmsg level screenmsg granules _module=nothing _file=nothing _line=nothing
+    Logging.with_logger(logger) do
+        Logging.@logmsg level granules msg _module=nothing _file=nothing _line=nothing
+    end
 end
 
 
