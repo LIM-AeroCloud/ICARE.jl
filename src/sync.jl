@@ -115,7 +115,7 @@ file name automatically. The function returns the updated `inventory`.
 function ignore!(
     inventory::SortedDict{String,<:Any},
     dates::AbstractDict{Date,<:Any};
-    logfile::String = "clean.log",
+    logfile::String = "ingore.log",
     loglevel::Symbol = :Debug
 )::SortedDict{String,<:Any}
     # Setup
@@ -153,10 +153,71 @@ function ignore!(
                 # Move all valid granules to the ignore section
                 inventory["ignore"][date][g] = inventory["dates"][date][g]
                 delete!(inventory["dates"][date], g)
+                isempty(inventory["dates"][date]) && delete!(inventory["dates"], date)
             end
             isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
             msg = "ignoring granules on $date"
             log_ignore(logger, granules, msg, msg*"; data moved from dates to ignore section")
+        end
+        # Save inventory if updated
+        save_inventory(inventory, t0)
+    end
+    return inventory
+end
+
+
+function unignore!(
+    inventory::SortedDict{String,<:Any},
+    dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
+    logfile::String = "ignore.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String,<:Any}
+    # Setup
+    t0 = Dates.now()
+    if !haskey(inventory, "ignore")
+        @info "no ignore section found in the inventory, nothing to unignore"
+        return inventory
+    end
+    # Unignore everything, if no dates are provided
+    if isempty(dates)
+        for (key, values) in inventory["ignore"]
+            dates[key] = collect(keys(values))
+        end
+    end
+    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    @info "logging to '$logfile'"
+    open(logfile, "w") do logio
+        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        # Loop over dates and granules to be unignored
+        for (date, granules) in dates
+            # Skip dates not in the ignore section
+            if !haskey(inventory["ignore"], date)
+                log_ignore(logger, granules, "no ignored data for $date, nothing to unignore",
+                    level=Logging.Warn)
+                continue
+            end
+            # Split granules in outliers, duplicates, and valid granules
+            granules isa AbstractString && (granules = [granules])
+            granules, outliers = split_outliers(granules, keys(inventory["ignore"][date]))
+            if haskey(inventory["dates"], date)
+                duplicates, outliers = split_outliers(outliers, keys(inventory["dates"][date]))
+            else
+                duplicates = String[]
+                isempty(granules) || (inventory["dates"][date] = SortedDict{String,<:Any}())
+            end
+            log_ignore(logger, outliers, "skipping granules not found in the ignore section",
+                level=Logging.Warn)
+            log_ignore(logger, duplicates, "skipping granules that were already unignored")
+            for g in granules
+                # Move all valid granules to the dates section
+                inventory["dates"][date][g] = inventory["ignore"][date][g]
+                delete!(inventory["ignore"][date], g)
+                isempty(inventory["ignore"][date]) && delete!(inventory["ignore"], date)
+            end
+            isempty(inventory["ignore"]) && delete!(inventory, "ignore")
+            isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
+            msg = "unignoring granules on $date"
+            log_ignore(logger, granules, msg, msg*"; data moved from ignore to dates section")
         end
         # Save inventory if updated
         save_inventory(inventory, t0)

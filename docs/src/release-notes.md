@@ -16,7 +16,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   download sessions ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
 - Method `clean` to clean the product folder recursively from any files not belonging to the inventory
   ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
-- Method `ignore` to exclude database files in the inventory ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
+- Methods `ignore!` and `unignore!` to exclude database files in the inventory and include 
+  them again ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
 
 ### Changed
 
