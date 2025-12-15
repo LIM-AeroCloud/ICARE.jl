@@ -15,6 +15,8 @@ If files of the new format already exist, they are skipped unless `sizecheck` is
 which will reconvert any file whose size differs from that listed in the inventory.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+
+See also: [`convert!`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function Base.convert(
     root::AbstractString=".";
@@ -45,6 +47,8 @@ is set to `true`, which will reconvert any file whose size differs from that lis
 `inventory`.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+
+See also: [`convert`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert!(
     inventory::SortedDict{String,<:Any};

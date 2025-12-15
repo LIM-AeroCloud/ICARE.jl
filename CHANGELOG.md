@@ -12,8 +12,9 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   download sessions ([#16])
 - Method `clean` to clean the product folder recursively from any files not belonging to the inventory
   ([#16])
-- Methods `ignore!` and `unignore!` to exclude database files in the inventory and include 
+- Methods `ignore!` and `unignore!` to exclude database files in the inventory and include
   them again ([#17])
+- Methods `attach` and `detach` to mark extra data exempt from `clean` procedures ([#17])
 
 ### Changed
 

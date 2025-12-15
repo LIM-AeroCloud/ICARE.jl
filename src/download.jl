@@ -40,6 +40,8 @@ date is selected and the latest possible end date, e.g. `202003` will give a sta
 defined by `startdate` is downloaded, either a day, or a month (if the day part is omitted)
 or a year (if both day and month are omitted).
 
+See also: [`convert!`](@ref), [`convert(::String)`](@ref), [`ignore!`](@ref), [`unignore!`](@ref), [`clean`](@ref)
+
 # Keyword arguments
 
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).

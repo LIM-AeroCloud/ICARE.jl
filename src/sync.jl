@@ -23,6 +23,9 @@ available on the ICARE server. The function has two methods – you can either p
 `AbstractString` with the path of the product folder or the inventory as `SortedDict` of the
 product. Both methods return the `inventory` for reference.
 
+See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref),
+[`convert!`](@ref), [`convert(::String)`](@ref), [`sftp_download`](@ref)
+
 # Keyword Arguments
 
 - `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
@@ -111,6 +114,8 @@ end
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
 file name automatically. The function returns the updated `inventory`.
+
+See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function ignore!(
     inventory::SortedDict{String,<:Any},
@@ -120,9 +125,7 @@ function ignore!(
 )::SortedDict{String,<:Any}
     # Setup
     t0 = Dates.now()
-    if !haskey(inventory, "ignore")
-        inventory["ignore"] = SortedDict{Date, Any}()
-    end
+    haskey(inventory, "ignore") || (inventory["ignore"] = SortedDict{Date, Any}())
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
     open(logfile, "w") do logio
@@ -166,6 +169,20 @@ function ignore!(
 end
 
 
+"""
+    unignore!(
+        inventory::SortedDict{String,<:Any},
+        dates::AbstractDict{Date, Any}=Dict{Date,Any}();
+        logfile::String = "ignore.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String,<:Any}
+
+Unflag the `dates` from being ignored in the `inventory` and allow them to be downloaded again.
+Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
+file name automatically. The function returns the updated `inventory`.
+
+See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
+"""
 function unignore!(
     inventory::SortedDict{String,<:Any},
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
@@ -219,6 +236,140 @@ function unignore!(
             msg = "unignoring granules on $date"
             log_ignore(logger, granules, msg, msg*"; data moved from ignore to dates section")
         end
+        # Save inventory if updated
+        save_inventory(inventory, t0)
+    end
+    return inventory
+end
+
+
+## Helper functions for attaching and detaching extra data
+
+"""
+    attach!(
+        inventory::SortedDict{String,<:Any},
+        extras::Union{AbstractString,Vector{<:AbstractString}};
+        logfile::String = "extras.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String,<:Any}
+
+Attach extra files and folders to the `inventory` that should be kept during `clean` operations.
+The `extras` can be provided as a single `AbstractString` or as a vector of
+`AbstractString`s. Return the updated `inventory`. Log events with the specified `loglevel`
+to the `logfile`. A timestamp is appended to the log file name automatically.
+
+See also: [`detach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+
+"""
+function attach!(
+    inventory::SortedDict{String,<:Any},
+    extras::Union{AbstractString,Vector{<:AbstractString}};
+    logfile::String = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String,<:Any}
+    # Init
+    t0 = Dates.now()
+    extras isa AbstractString && (extras = [extras])
+    haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
+    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    @info "logging to '$logfile'"
+    open(logfile, "w") do logio
+        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        for path in extras
+            isabspath(path) || (path = joinpath(inventory["metadata"]["local"]["path"], path))
+            try path = realpath(path)
+            catch err
+                path = normpath(path)
+                if err isa Base.IOError
+                    @warn "'$path' does not exist, skipping"
+                    Logging.with_logger(logger) do
+                        @warn "'$path' not found, skip attaching"
+                    end
+                else
+                    @warn "unexpected error when accessing '$path', skipping path" err
+                    Logging.with_logger(logger) do
+                        @warn "unexpected error when accessing '$path', skip attaching" err
+                    end
+                end
+                continue
+            end
+            if path in inventory["extras"]
+                @info "'$path' already in extras, skipping"
+                Logging.with_logger(logger) do
+                    @info "'$path' already in extras, skip attaching"
+                end
+                continue
+            elseif !startswith(path, inventory["metadata"]["local"]["path"])
+                @warn "'$path' is outside the product folder, skipping"
+                Logging.with_logger(logger) do
+                    @warn "'$path' is outside the product folder, skip attaching"
+                end
+                continue
+            end
+            push!(inventory["extras"], path)
+        end
+        # Sort file list
+        sort!(inventory["extras"])
+        # Save inventory if updated
+        save_inventory(inventory, t0)
+    end
+    return inventory
+end
+
+
+"""
+    detach!(
+        inventory::SortedDict{String,<:Any},
+        extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
+        logfile::String = "extras.log",
+        loglevel::Symbol = :Debug
+    ) -> SortedDict{String,<:Any}
+
+Detach files and folders from the `inventory` that were previously marked as extra data to be kept
+during `clean` operations. If no `extras` are provided, all extra data will be detached.
+The function returns the updated `inventory`. Log events with the specified `loglevel`
+to the `logfile`. A timestamp is appended to the log file name automatically.
+
+See also: [`attach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+"""
+function detach!(
+    inventory::SortedDict{String,<:Any},
+    extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
+    logfile::String = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict{String,<:Any}
+    # Initial checks
+    t0 = Dates.now()
+    if !haskey(inventory, "extras")
+        @info "no extras section found in the inventory, nothing to detach"
+        Logging.with_logger(logger) do
+            @info "no extras section found in the inventory, nothing to detach"
+        end
+        return inventory
+    elseif extras isa AbstractString
+        extras = [extras]
+    elseif isempty(extras)
+        extras = deepcopy(inventory["extras"])
+    end
+    # Start logging
+    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    @info "logging to '$logfile'"
+    open(logfile, "w") do logio
+        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        for path in extras
+            # ℹ relpath ensures no trailing slash in the path
+            isabspath(path) || (path = normpath(joinpath(inventory["metadata"]["local"]["path"], relpath(path))))
+            if path ∉ inventory["extras"]
+                @warn "'$path' not found in extras, skipping"
+                Logging.with_logger(logger) do
+                    @info "'$path' not found in extras, skip detaching"
+                end
+                continue
+            end
+            filter!(!isequal(path), inventory["extras"])
+        end
+        # Remove empty extras section
+        isempty(inventory["extras"]) && delete!(inventory, "extras")
         # Save inventory if updated
         save_inventory(inventory, t0)
     end
