@@ -271,24 +271,44 @@ function attach!(
     t0 = Dates.now()
     extras isa AbstractString && (extras = [extras])
     haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    root = inventory["metadata"]["local"]["path"]
+    logfile, level = init_logging(logfile, root, loglevel)
     @info "logging to '$logfile'"
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        Logging.with_logger(logger) do
+            @info "prepare attachment of extras" extras
+        end
         for path in extras
-            isabspath(path) || (path = joinpath(inventory["metadata"]["local"]["path"], path))
-            try path = realpath(path)
-            catch err
-                path = normpath(path)
-                if err isa Base.IOError
-                    @warn "'$path' does not exist, skipping"
+            #* Prepare path, ensure relative paths to the product folder, get relative tree for base
+            # Normalize path name
+            # ℹ relpath ensures no trailing slash in the path, normpath ensures direct path
+            path = normpath(relpath(path))
+            if isabspath(path)
+                if startswith(path, root)
+                    r = length(root) + 2 # ℹ next index after slash
+                    path = path[r:end]
+                else
+                    @warn "'$path' is outside the product folder, skipping"
                     Logging.with_logger(logger) do
-                        @warn "'$path' not found, skip attaching"
+                        @warn "'$path' is outside the product folder, skip attaching"
+                    end
+                    continue
+                end
+            end
+            tree = splitpath(path)[1:end-1]
+            # Only attach existing paths within the product folder
+            abspath = try realpath(joinpath(root, path))
+            catch err
+                if err isa Base.IOError
+                    @warn "'$path' does not exist in the product folder, skipping"
+                    Logging.with_logger(logger) do
+                        @warn "'$path' not found in the product folder, skip attaching"
                     end
                 else
-                    @warn "unexpected error when accessing '$path', skipping path" err
+                    @warn "unexpected error when accessing '$path' in the product folder, skipping path" err
                     Logging.with_logger(logger) do
-                        @warn "unexpected error when accessing '$path', skip attaching" err
+                        @warn "unexpected error when accessing '$path' in the product folder, skip attaching" err
                     end
                 end
                 continue
@@ -299,14 +319,28 @@ function attach!(
                     @info "'$path' already in extras, skip attaching"
                 end
                 continue
-            elseif !startswith(path, inventory["metadata"]["local"]["path"])
+            elseif !startswith(abspath, root)
                 @warn "'$path' is outside the product folder, skipping"
                 Logging.with_logger(logger) do
                     @warn "'$path' is outside the product folder, skip attaching"
                 end
                 continue
             end
+            Logging.with_logger(logger) do
+                @debug "attaching '$path' to extras"
+            end
+            # Save path after successful checks
             push!(inventory["extras"], path)
+            inventory["metadata"]["database"]["updated"] = Dates.now()
+            # Ignore parent tree as well
+            for i = length(tree):-1:1
+                parent = normpath(tree[1:i]...)
+                parent in inventory["extras"] && break
+                push!(inventory["extras"], parent)
+                Logging.with_logger(logger) do
+                    @debug "attaching parent folder '$parent' to extras"
+                end
+            end
         end
         # Sort file list
         sort!(inventory["extras"])
@@ -338,6 +372,8 @@ function detach!(
     logfile::String = "extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict{String,<:Any}
+    # TODO Ask for options to detach parent folders, ensure not to ask, if everything is to be detached
+    # DECIDE Ask only, if parent is otherwise empty?
     # Initial checks
     t0 = Dates.now()
     if !haskey(inventory, "extras")
