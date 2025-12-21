@@ -14,7 +14,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   ([#16])
 - Methods `ignore!` and `unignore!` to exclude database files in the inventory and include
   them again ([#17])
-- Methods `attach` and `detach` to mark extra data exempt from `clean` procedures ([#17])
+- Methods `attach!` and `detach!` to mark extra data exempt from `clean` procedures ([#17])
 
 ### Changed
 

@@ -296,6 +296,7 @@ function attach!(
                     continue
                 end
             end
+            # Save parent tree before tempering with path
             tree = splitpath(path)[1:end-1]
             # Only attach existing paths within the product folder
             abspath = try realpath(joinpath(root, path))
@@ -330,8 +331,7 @@ function attach!(
                 @debug "attaching '$path' to extras"
             end
             # Save path after successful checks
-            push!(inventory["extras"], path)
-            inventory["metadata"]["database"]["updated"] = Dates.now()
+            attach_path!(inventory, path, logger)
             # Ignore parent tree as well
             for i = length(tree):-1:1
                 # Check, if parent is already ignored or known as parent
@@ -380,16 +380,15 @@ function detach!(
 )::SortedDict{String,Any}
     # Initial checks
     t0 = Dates.now()
+    sleep(0.001) # ℹ ensure different updated time from t0
     if !haskey(inventory, "extras")
         @info "no extras section found in the inventory, nothing to detach"
-        Logging.with_logger(logger) do
-            @info "no extras section found in the inventory, nothing to detach"
-        end
         return inventory
     elseif extras isa AbstractString
         extras = [extras]
     elseif isempty(extras)
         delete!(inventory, "extras")
+        @info "all extras detached from the inventory"
         inventory["metadata"]["database"]["updated"] = Dates.now()
         save_inventory(inventory, t0)
         return inventory
@@ -399,17 +398,13 @@ function detach!(
     @info "logging to '$logfile'"
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
+        # Detach all paths and parent folders exclusive to the given path
         for path in extras
             # ℹ relpath ensures no trailing slash in the path
-            isabspath(path) || (path = normpath(inventory["metadata"]["local"]["path"], relpath(path)))
-            if path ∉ inventory["extras"]
-                @warn "'$path' not found in extras, skipping"
-                Logging.with_logger(logger) do
-                    @info "'$path' not found in extras, skip detaching"
-                end
-                continue
-            end
-            filter!(!isequal(path), inventory["extras"])
+            isabspath(path) && (path = relpath(path, inventory["metadata"]["local"]["path"]))
+            detach_path!(inventory, path, logger) || continue
+            detach_parents!(inventory, path, logger)
+            inventory["metadata"]["database"]["updated"] = Dates.now()
         end
         # Remove empty extras section
         isempty(inventory["extras"]) && delete!(inventory, "extras")
@@ -482,14 +477,19 @@ function extrascan(
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Scan path for extra files
     path_waste = localscan(database, path, setdiff)
-    # Filter out allowed extras
-    extrapaths = joinpath.(inventory["metadata"]["local"]["path"], inventory["extras"])
-    filter!(!in(extrapaths), path_waste.folders)
-    filter!(!in(extrapaths), path_waste.files)
-    # Scan for possible parent folders with allowed nested extras
-    extras = joinpath.(path_waste.folders, "")
-    filter!(in(extrapaths), extras)
-    filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
+    # Check extras, if available
+    if haskey(inventory, "extras")
+        # Filter out allowed extras
+        extrapaths = joinpath.(inventory["metadata"]["local"]["path"], inventory["extras"])
+        filter!(!in(extrapaths), path_waste.folders)
+        filter!(!in(extrapaths), path_waste.files)
+        # Scan for possible parent folders with allowed nested extras
+        extras = joinpath.(path_waste.folders, "")
+        filter!(in(extrapaths), extras)
+        filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
+    else
+        extras = String[]
+    end
     # Save waste of current path to overall waste
     union!(waste.folders, path_waste.folders)
     union!(waste.files, path_waste.files)
@@ -578,6 +578,133 @@ function split_outliers(container, comparison)::Tuple{Vector{String},Vector{Stri
         item in comparison ? push!(members, item) : push!(outliers, item)
     end
     return (members, outliers)
+end
+
+
+"""
+    attach_path!(
+        inventory::SortedDict{String,Any},
+        path::AbstractString,
+        logger::Logging.AbstractLogger
+    )
+
+Attach a `path` to the `inventory` extras unless a parent folder is already ignored.
+Remove possible sub-folders of `path` previously attached to the `inventory`.
+Log events to the provided `logger`.
+"""
+function attach_path!(
+    inventory::SortedDict{String,Any},
+    path::AbstractString,
+    logger::Logging.AbstractLogger
+)::Nothing
+    # Check parent folders are not already attached
+    parts = splitpath(path)[1:end-1]
+    paths = [joinpath(parts[1:i]...) for i in 1:length(parts)]
+    if !isdisjoint(inventory["extras"], paths)
+        @info "parent folder of '$path' already attached, skipping"
+        Logging.with_logger(logger) do
+            @info "parent folder of '$path' already attached, skip attaching"
+        end
+        return
+    end
+    # Remove previously ignored subpaths from inventory extras
+    paths = filter(startswith(path), inventory["extras"])
+    if !isempty(paths)
+        @info "removing previously attached sub-paths of '$path'" paths
+        Logging.with_logger(logger) do
+            @info "removing previously attached sub-paths of '$path'" paths
+        end
+        filter!(!in(paths), inventory["extras"])
+    end
+    # Attach path
+    push!(inventory["extras"], path)
+    @debug "attached '$path' to extras"
+    Logging.with_logger(logger) do
+        @debug "attached '$path' to extras"
+    end
+    inventory["metadata"]["database"]["updated"] = Dates.now()
+    return
+end
+
+
+"""
+    detach_path!(
+        inventory::SortedDict{String,Any},
+        path::AbstractString,
+        logger::Logging.AbstractLogger
+    ) -> Bool
+
+Detach the given `path` from the `inventory` extras including any sub-folders within the `path`.
+The function returns `true` if the path was detached, `false` otherwise.
+Log events to the provided `logger`.
+"""
+function detach_path!(
+    inventory::SortedDict{String,Any},
+    path::AbstractString,
+    logger::Logging.AbstractLogger
+)::Bool
+    #* Check for path in inventory extras
+    # Check, if path itself is attached or if path is a parent folder to an attached path
+    parent = if path in inventory["extras"]
+        false
+    else
+        path = joinpath(path, "")
+        true
+    end
+    # Skip missing paths
+    if path ∉ inventory["extras"]
+        @info "'$path' not found in extras, skipping"
+        Logging.with_logger(logger) do
+            @info "'$path' not found in extras, skip detaching"
+        end
+        return false
+    end
+    #* Remove path and child paths from extras
+    extras = filter(startswith(path), inventory["extras"])
+    filter!(!in(extras), inventory["extras"])
+    if parent
+        @warn "detached a parent folder including other extras" extras
+        Logging.with_logger(logger) do
+            @info "detached a parent folder including other extras" extras
+        end
+    else
+        @warn "detached '$path' from extras"
+        Logging.with_logger(logger) do
+            @info "detached '$path' from extras"
+        end
+    end
+    #* Ensure inventory updates are saved later
+    inventory["metadata"]["local"]["updated"] = Dates.now()
+    return true
+end
+
+
+"""
+    detach_parents!(
+        inventory::SortedDict{String,Any},
+        path::AbstractString,
+        logger::Logging.AbstractLogger
+    )
+
+Detach parent folders that are exclusive to the given `path` from the `inventory` extras.
+Log events to the provided `logger`.
+"""
+function detach_parents!(
+    inventory::SortedDict{String,Any},
+    path::String,
+    logger::Logging.AbstractLogger,
+)::Nothing
+    parts = splitpath(path)[1:end-1]
+    paths = [joinpath(parts[1:i]..., "") for i in length(parts):-1:1]
+    for path in paths
+        parents = filter(startswith(path), inventory["extras"])
+        length(parents) == 1 || continue
+        filter!(!isequal(parents[1]), inventory["extras"])
+        @info "detached parent '$(parents[1])' from extras"
+        Logging.with_logger(logger) do
+            @info "detached parent '$(parents[1])' from extras"
+        end
+    end
 end
 
 

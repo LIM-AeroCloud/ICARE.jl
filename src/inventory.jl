@@ -553,8 +553,8 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     inventory["metadata"]["database"]["size"] = sum(get.(filedata, "size", 0)) + foldersize
     db = inventory_dates(inventory, none)
     data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
-    inventory["metadata"]["database"]["downloaded size"] = 4096*length(data["folders"]) +
-        sum(filesize.(data["files"] |> filter(endswith(".hdf"))))
+    inventory["metadata"]["database"]["downloaded size"] = 4096*length(data.folders) +
+        sum(filesize.(data.files |> filter(endswith(".hdf"))))
     inventory["metadata"]["database"]["converted size"] =
         get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()
