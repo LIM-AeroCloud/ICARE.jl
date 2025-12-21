@@ -111,8 +111,8 @@ function new_inventory!(
     end
     inventory["dates"] = SortedDict{Date,SortedDict}()
     inventory["gaps"] = Vector{Date}()
-    inventory["metadata"] = SortedDict{String,<:Any}(
-        "database" => OrderedDict{String,<:Any}(
+    inventory["metadata"] = SortedDict{String,Any}(
+        "database" => OrderedDict{String,Any}(
             "dates" => 0,
             "missing" => 0,
             "size" => 0,
@@ -123,7 +123,7 @@ function new_inventory!(
             "created" => Dates.now(),
             "updated" => Dates.now()
         ),
-        "file" => SortedDict{String,<:Any}(
+        "file" => SortedDict{String,Any}(
             "conversions" => 0,
             "count" => 0,
             "ext" => "",
@@ -553,8 +553,8 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     inventory["metadata"]["database"]["size"] = sum(get.(filedata, "size", 0)) + foldersize
     db = inventory_dates(inventory, none)
     data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
-    inventory["metadata"]["database"]["downloaded size"] = 4096*length(data.folders) +
-        sum(filesize.(data.files |> filter(endswith(".hdf"))))
+    inventory["metadata"]["database"]["downloaded size"] = 4096*length(data["folders"]) +
+        sum(filesize.(data["files"] |> filter(endswith(".hdf"))))
     inventory["metadata"]["database"]["converted size"] =
         get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
     inventory["metadata"]["database"]["updated"] = Dates.now()

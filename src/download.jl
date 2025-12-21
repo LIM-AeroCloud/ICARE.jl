@@ -17,7 +17,7 @@
         update::Bool = false,
         logfile::String = "downloads.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Download satellite data from the Aeris/ICARE server. The function returns a dictionary with
 the inventory of available online data for the given product.
@@ -81,7 +81,7 @@ function sftp_download(
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     ## Setup
     # Create product folder, if not existent
     product = isnothing(version) ? product : @sprintf("%s.v%.2f", product, version)
@@ -111,7 +111,7 @@ function sftp_download(
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block
-        inventory = SortedDict{String,<:Any}()
+        inventory = SortedDict{String,Any}()
         # Get available server dates
         try
             product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)

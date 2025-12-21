@@ -8,18 +8,19 @@
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
     clean(
-        inventory::SortedDict{String,<:Any};
+        inventory::SortedDict{String,Any};
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Clean a product folder recursively from all content not listed in the inventory, i.e. not
-available on the ICARE server. The function has two methods – you can either provide an
+available on the ICARE server, or not flagged as extra files in the `inventory` extra section
+with the `attach!` function. The function has two methods – you can either provide an
 `AbstractString` with the path of the product folder or the inventory as `SortedDict` of the
 product. Both methods return the `inventory` for reference.
 
@@ -46,22 +47,22 @@ function clean(
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String,<:Any}()
+    inventory = SortedDict{String,Any}()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
     clean(inventory; keepext, erase, logfile, loglevel)
 end
 
 function clean(
-    inventory::SortedDict{String,<:Any};
+    inventory::SortedDict{String,Any};
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Start
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
@@ -71,27 +72,26 @@ function clean(
         @info "analyse inventory and local database"
         database = inventory_dates(inventory, erase)
         # Scan inventory for additional files and folders
-        root = inventory["metadata"]["local"]["path"]
-        extra = localscan(database, root, setdiff)
+        waste = extrascan(inventory, inventory["metadata"]["local"]["path"], database)
         # Remove current logfile from extra files
-        filter!(!isequal(logfile), extra.files)
+        filter!(!isequal(logfile), waste.files)
         # Keep specified extensions
         if !isempty(keepext)
             keepext isa Vector || (keepext = [keepext])
             for ext in keepext
-                filter!(!endswith(ext), extra.files)
+                filter!(!endswith(ext), waste.files)
             end
         end
         # Clean up local database
-        if confirm(extra)
+        if confirm(waste)
             Logging.with_logger(logger) do
-                s = length(extra.files) == 1 ? "" : "s"
-                s_ = length(extra.folders) == 1 ? "" : "s"
-                @warn("cleaning $(length(extra.files)) file$s and $(length(extra.folders)) folder$s_",
-                    extra.files, extra.folders)
+                s = length(waste.files) == 1 ? "" : "s"
+                s_ = length(waste.folders) == 1 ? "" : "s"
+                @warn("cleaning $(length(waste.files)) file$s and $(length(waste.folders)) folder$s_",
+                    folders = waste.folders |> collect |> sort, files = waste.files |> collect |> sort)
             end
-            rm.(extra.files, force=true)
-            rm.(extra.folders, recursive=true, force=true)
+            rm.(waste.files, force=true)
+            rm.(waste.folders, recursive=true, force=true)
         else
             @info "aborting clean-up"
             Logging.with_logger(logger) do
@@ -105,11 +105,11 @@ end
 
 """
     ignore!(
-        inventory::SortedDict{String,<:Any},
+        inventory::SortedDict{String,Any},
         dates::AbstractDict{Date, Any};
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
@@ -118,11 +118,11 @@ file name automatically. The function returns the updated `inventory`.
 See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function ignore!(
-    inventory::SortedDict{String,<:Any},
+    inventory::SortedDict{String,Any},
     dates::AbstractDict{Date,<:Any};
     logfile::String = "ingore.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Setup
     t0 = Dates.now()
     haskey(inventory, "ignore") || (inventory["ignore"] = SortedDict{Date, Any}())
@@ -147,7 +147,7 @@ function ignore!(
                 duplicates, outliers = split_outliers(outliers, keys(inventory["ignore"][date]))
             else
                 duplicates = String[]
-                isempty(granules) || (inventory["ignore"][date] = SortedDict{String,<:Any}())
+                isempty(granules) || (inventory["ignore"][date] = SortedDict{String,Any}())
             end
             log_ignore(logger, outliers, "skipping granules not found in the inventory",
                 level=Logging.Warn)
@@ -171,11 +171,11 @@ end
 
 """
     unignore!(
-        inventory::SortedDict{String,<:Any},
+        inventory::SortedDict{String,Any},
         dates::AbstractDict{Date, Any}=Dict{Date,Any}();
         logfile::String = "ignore.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Unflag the `dates` from being ignored in the `inventory` and allow them to be downloaded again.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
@@ -184,11 +184,11 @@ file name automatically. The function returns the updated `inventory`.
 See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function unignore!(
-    inventory::SortedDict{String,<:Any},
+    inventory::SortedDict{String,Any},
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
     logfile::String = "ignore.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Setup
     t0 = Dates.now()
     if !haskey(inventory, "ignore")
@@ -220,7 +220,7 @@ function unignore!(
                 duplicates, outliers = split_outliers(outliers, keys(inventory["dates"][date]))
             else
                 duplicates = String[]
-                isempty(granules) || (inventory["dates"][date] = SortedDict{String,<:Any}())
+                isempty(granules) || (inventory["dates"][date] = SortedDict{String,Any}())
             end
             log_ignore(logger, outliers, "skipping granules not found in the ignore section",
                 level=Logging.Warn)
@@ -247,26 +247,26 @@ end
 
 """
     attach!(
-        inventory::SortedDict{String,<:Any},
+        inventory::SortedDict{String,Any},
         extras::Union{AbstractString,Vector{<:AbstractString}};
         logfile::String = "extras.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Attach extra files and folders to the `inventory` that should be kept during `clean` operations.
-The `extras` can be provided as a single `AbstractString` or as a vector of
-`AbstractString`s. Return the updated `inventory`. Log events with the specified `loglevel`
-to the `logfile`. A timestamp is appended to the log file name automatically.
+Files nested in foreign folders are recognised as well keeping the parent folders during `clean`
+operations. The `extras` can be provided as a single `AbstractString` or as a vector of
+`AbstractString`s. The function returns the updated `inventory` and logs events with the
+specified `loglevel` to the `logfile`. A timestamp is appended to the log file name automatically.
 
 See also: [`detach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
-
 """
 function attach!(
-    inventory::SortedDict{String,<:Any},
+    inventory::SortedDict{String,Any},
     extras::Union{AbstractString,Vector{<:AbstractString}};
     logfile::String = "extras.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Init
     t0 = Dates.now()
     extras isa AbstractString && (extras = [extras])
@@ -334,7 +334,10 @@ function attach!(
             inventory["metadata"]["database"]["updated"] = Dates.now()
             # Ignore parent tree as well
             for i = length(tree):-1:1
+                # Check, if parent is already ignored or known as parent
                 parent = normpath(tree[1:i]...)
+                parent in inventory["extras"] && break
+                parent = joinpath(parent, "")
                 parent in inventory["extras"] && break
                 push!(inventory["extras"], parent)
                 Logging.with_logger(logger) do
@@ -353,27 +356,28 @@ end
 
 """
     detach!(
-        inventory::SortedDict{String,<:Any},
+        inventory::SortedDict{String,Any},
         extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
         logfile::String = "extras.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
-Detach files and folders from the `inventory` that were previously marked as extra data to be kept
-during `clean` operations. If no `extras` are provided, all extra data will be detached.
-The function returns the updated `inventory`. Log events with the specified `loglevel`
+Detach files and folders from the `inventory` that were previously marked as extra data to
+be kept during `clean` operations. If no `extras` are provided, all extra data will be detached.
+For nested files and folders, the parent will be detached as well, if it contains no other extra
+data.
+
+The function returns the updated `inventory` and logs events with the specified `loglevel`
 to the `logfile`. A timestamp is appended to the log file name automatically.
 
 See also: [`attach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function detach!(
-    inventory::SortedDict{String,<:Any},
+    inventory::SortedDict{String,Any},
     extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
     logfile::String = "extras.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
-    # TODO Ask for options to detach parent folders, ensure not to ask, if everything is to be detached
-    # DECIDE Ask only, if parent is otherwise empty?
+)::SortedDict{String,Any}
     # Initial checks
     t0 = Dates.now()
     if !haskey(inventory, "extras")
@@ -385,7 +389,10 @@ function detach!(
     elseif extras isa AbstractString
         extras = [extras]
     elseif isempty(extras)
-        extras = deepcopy(inventory["extras"])
+        delete!(inventory, "extras")
+        inventory["metadata"]["database"]["updated"] = Dates.now()
+        save_inventory(inventory, t0)
+        return inventory
     end
     # Start logging
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
@@ -394,7 +401,7 @@ function detach!(
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
         for path in extras
             # ℹ relpath ensures no trailing slash in the path
-            isabspath(path) || (path = normpath(joinpath(inventory["metadata"]["local"]["path"], relpath(path))))
+            isabspath(path) || (path = normpath(inventory["metadata"]["local"]["path"], relpath(path)))
             if path ∉ inventory["extras"]
                 @warn "'$path' not found in extras, skipping"
                 Logging.with_logger(logger) do
@@ -417,7 +424,7 @@ end
 
 """
     inventory_dates(
-        inventory::SortedDict{String,<:Any}, erase::Extension
+        inventory::SortedDict{String,Any}, erase::Extension
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Rearrange the `inventory` for better processing as a named tuple with sets of absolute file and
@@ -425,7 +432,7 @@ folder paths. Either `original` or `converted` files might be removed based on t
 `erase`.
 """
 function inventory_dates(
-    inventory::SortedDict{String,<:Any}, erase::Extension
+    inventory::SortedDict{String,Any}, erase::Extension
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Init
     folders, files = Set{String}(), Set{String}()
@@ -457,15 +464,59 @@ end
 
 
 """
+    extrascan(
+        inventory::SortedDict{String,Any},
+        path::String,
+        database::@NamedTuple{folders::Set{String},files::Set{String}},
+        waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
+    ) -> @NamedTuple{folders::Set{String},files::Set{String}}
+
+Recursively scan the `path` for files and folders not present in the `database` and save them
+to `waste`. Allow paths listed as extras in the `inventory`. The function returns the `waste`.
+"""
+function extrascan(
+    inventory::SortedDict{String,Any},
+    path::String,
+    database::@NamedTuple{folders::Set{String},files::Set{String}},
+    waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
+)::@NamedTuple{folders::Set{String},files::Set{String}}
+    # Scan path for extra files
+    path_waste = localscan(database, path, setdiff)
+    # Filter out allowed extras
+    extrapaths = joinpath.(inventory["metadata"]["local"]["path"], inventory["extras"])
+    filter!(!in(extrapaths), path_waste.folders)
+    filter!(!in(extrapaths), path_waste.files)
+    # Scan for possible parent folders with allowed nested extras
+    extras = joinpath.(path_waste.folders, "")
+    filter!(in(extrapaths), extras)
+    filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
+    # Save waste of current path to overall waste
+    union!(waste.folders, path_waste.folders)
+    union!(waste.files, path_waste.files)
+    # Recursively scan for nested extras
+    for extra in extras
+        extrascan(
+            inventory,
+            extra,
+            database,
+            waste
+        )
+    end
+    return waste
+end
+
+
+"""
     localscan(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         root::String,
         combine::Function
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
-Scan the local directory recursively and compare it to the inventory. Depending on the `combine`
-function, `localscan` can be used to identify files and folders not present in the database by
-passing `setdiff` or to identify the downloaded part of the inventory with the `intersect` function.
+Scan the local directory recursively and compare it to the `database`, i.e. re-arranged inventory.
+Depending on the `combine` function, `localscan` can be used to identify files and folders not
+present in the `database` by passing `setdiff` or to identify the downloaded part of the `database`
+with the `intersect` function.
 """
 function localscan(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
@@ -484,7 +535,7 @@ end
 """
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        scanned::@NamedTuple{folders::Set{String},files::Set{String}},
+        scanned::NamedTuple{(:folders, :files)},
         root::String,
         combine::Function
     )
@@ -494,7 +545,7 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 """
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    scanned::@NamedTuple{folders::Set{String},files::Set{String}},
+    scanned::NamedTuple{(:folders, :files)},
     root::String,
     combine::Function
 )::Nothing
@@ -503,8 +554,8 @@ function _localscan!(
     files = filter(isfile, content)
     folders = filter(isdir, content)
     # Save extra files and folders
-    foreach(f -> push!(scanned.folders, f), combine(folders, database.folders))
-    foreach(f -> push!(scanned.files, f), combine(files, database.files))
+    union!(scanned.folders, combine(folders, database.folders))
+    union!(scanned.files, combine(files, database.files))
     # Search recursively in database folders
     foreach(i -> _localscan!(database, scanned, i, combine), intersect(folders, database.folders))
     return

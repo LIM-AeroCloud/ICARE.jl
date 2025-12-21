@@ -8,7 +8,7 @@
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Convert all files in `root` and part of the inventory to a new format as defined in the inventory.
 If files of the new format already exist, they are skipped unless `sizecheck` is set to `true`,
@@ -23,10 +23,10 @@ function Base.convert(
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String,<:Any}()
+    inventory = SortedDict{String,Any}()
     load_inventory!(inventory, path)
     # Call the conversion method for the inventory
     convert!(inventory; sizecheck, logfile, loglevel)
@@ -35,11 +35,11 @@ end
 
 """
     convert!(
-        inventory::SortedDict{String,<:Any};
+        inventory::SortedDict{String,Any};
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,<:Any}
+    ) -> SortedDict{String,Any}
 
 Convert all files in the local database and part of the `inventory` to a new format as defined
 in the `inventory`. If files of the new format already exist, they are skipped unless `sizecheck`
@@ -51,11 +51,11 @@ file name to avoid overwriting existing logs. The function returns the updated `
 See also: [`convert`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert!(
-    inventory::SortedDict{String,<:Any};
+    inventory::SortedDict{String,Any};
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,<:Any}
+)::SortedDict{String,Any}
     # Start
     t0 = Dates.now()
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
@@ -69,10 +69,8 @@ function convert!(
         root = inventory["metadata"]["local"]["path"]
         db = localscan(database, root, intersect)
         # Clean up local database and save inventory
-        conversion(inventory, db.files, sizecheck, logger)
-        if inventory["metadata"]["database"]["updated"] > t0
-            save_inventory(inventory, t0)
-        end
+        conversion(inventory, db["files"], sizecheck, logger)
+        save_inventory(inventory, t0)
     end
     return inventory
 end
@@ -166,7 +164,7 @@ end
 
 """
     conversion(
-        inventory::SortedDict{String,<:Any},
+        inventory::SortedDict{String,Any},
         files::Set{String},
         sizecheck::Bool,
         logger::Logging.ConsoleLogger
@@ -177,7 +175,7 @@ Conversions are skipped, if files of the new format already exist and either the
 the one listed in the `inventory` or `sizecheck` is set to `false`. Log events to `logger`.
 """
 function conversion(
-    inventory::SortedDict{String,<:Any},
+    inventory::SortedDict{String,Any},
     files::Set{String},
     sizecheck::Bool,
     logger::Logging.ConsoleLogger
