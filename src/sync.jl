@@ -8,15 +8,15 @@
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
     clean(
-        inventory::SortedDict{String,Any};
+        inventory::SortedDict;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
         erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Clean a product folder recursively from all content not listed in the inventory, i.e. not
 available on the ICARE server, or not flagged as extra files in the `inventory` extra section
@@ -47,22 +47,22 @@ function clean(
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String,Any}()
+    inventory = SortedDict()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
     clean(inventory; keepext, erase, logfile, loglevel)
 end
 
 function clean(
-    inventory::SortedDict{String,Any};
+    inventory::SortedDict;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
     erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Start
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
@@ -105,11 +105,11 @@ end
 
 """
     ignore!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         dates::AbstractDict{Date, Any};
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
@@ -118,11 +118,11 @@ file name automatically. The function returns the updated `inventory`.
 See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function ignore!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     dates::AbstractDict{Date,<:Any};
     logfile::String = "ingore.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Setup
     t0 = Dates.now()
     haskey(inventory, "ignore") || (inventory["ignore"] = SortedDict{Date, Any}())
@@ -147,7 +147,7 @@ function ignore!(
                 duplicates, outliers = split_outliers(outliers, keys(inventory["ignore"][date]))
             else
                 duplicates = String[]
-                isempty(granules) || (inventory["ignore"][date] = SortedDict{String,Any}())
+                isempty(granules) || (inventory["ignore"][date] = SortedDict())
             end
             log_ignore(logger, outliers, "skipping granules not found in the inventory",
                 level=Logging.Warn)
@@ -171,11 +171,11 @@ end
 
 """
     unignore!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         dates::AbstractDict{Date, Any}=Dict{Date,Any}();
         logfile::String = "ignore.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Unflag the `dates` from being ignored in the `inventory` and allow them to be downloaded again.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
@@ -184,11 +184,11 @@ file name automatically. The function returns the updated `inventory`.
 See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function unignore!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
     logfile::String = "ignore.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Setup
     t0 = Dates.now()
     if !haskey(inventory, "ignore")
@@ -220,7 +220,7 @@ function unignore!(
                 duplicates, outliers = split_outliers(outliers, keys(inventory["dates"][date]))
             else
                 duplicates = String[]
-                isempty(granules) || (inventory["dates"][date] = SortedDict{String,Any}())
+                isempty(granules) || (inventory["dates"][date] = SortedDict())
             end
             log_ignore(logger, outliers, "skipping granules not found in the ignore section",
                 level=Logging.Warn)
@@ -243,15 +243,45 @@ function unignore!(
 end
 
 
+""""
+    list_inventory(inventory::SortedDict)
+
+List the content of the `inventory` in a simplified tree structure showing available and already
+downloaded folders and files and statistics about the inventory content.
+"""
+function list_inventory(inventory::SortedDict)::Nothing
+    dates = collect(Date, keys(inventory["dates"]))
+    years = Dates.year.(dates) |> unique
+    date_range = [findall(d -> Dates.year(d) == year, dates) for year in years]
+    println(inventory["metadata"]["remote"]["product"])
+    for d = 1:length(date_range) - 1
+        print_year_stats(inventory, years[d], dates[date_range[d]])
+    end
+    print_year_stats(inventory, years[end], dates[date_range[end]], true)
+    printstyled("Overall statistics\n\n", bold=true, underline=true)
+    println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
+        inventory["metadata"]["database"]["stop"])
+    println("dates:         ", length(dates))
+    println("missing dates: ", inventory["metadata"]["database"]["missing"])
+    println("granules:      ", inventory["metadata"]["file"]["downloads"],"/",
+        inventory["metadata"]["file"]["conversions"], " of ", inventory["metadata"]["file"]["count"])
+    println("size:          ", display_size(inventory["metadata"]["database"]["downloaded size"]),
+        "/", display_size(inventory["metadata"]["database"]["converted size"]), " of ",
+        display_size(inventory["metadata"]["database"]["size"]))
+    println()
+    @info "file sizes are displayed as <downloads in original format>/<converted size> of <total size in original format>"
+end
+
+
 ## Helper functions for attaching and detaching extra data
 
 """
     attach!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}};
         logfile::String = "extras.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Attach extra files and folders to the `inventory` that should be kept during `clean` operations.
 Files nested in foreign folders are recognised as well keeping the parent folders during `clean`
@@ -262,11 +292,11 @@ specified `loglevel` to the `logfile`. A timestamp is appended to the log file n
 See also: [`detach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function attach!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     extras::Union{AbstractString,Vector{<:AbstractString}};
     logfile::String = "extras.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Init
     t0 = Dates.now()
     extras isa AbstractString && (extras = [extras])
@@ -356,11 +386,11 @@ end
 
 """
     detach!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
         logfile::String = "extras.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Detach files and folders from the `inventory` that were previously marked as extra data to
 be kept during `clean` operations. If no `extras` are provided, all extra data will be detached.
@@ -373,11 +403,11 @@ to the `logfile`. A timestamp is appended to the log file name automatically.
 See also: [`attach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function detach!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
     logfile::String = "extras.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     # Initial checks
     t0 = Dates.now()
     sleep(0.001) # ℹ ensure different updated time from t0
@@ -419,7 +449,7 @@ end
 
 """
     inventory_dates(
-        inventory::SortedDict{String,Any}, erase::Extension
+        inventory::SortedDict, erase::Extension
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Rearrange the `inventory` for better processing as a named tuple with sets of absolute file and
@@ -427,7 +457,7 @@ folder paths. Either `original` or `converted` files might be removed based on t
 `erase`.
 """
 function inventory_dates(
-    inventory::SortedDict{String,Any}, erase::Extension
+    inventory::SortedDict, erase::Extension
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Init
     folders, files = Set{String}(), Set{String}()
@@ -460,7 +490,7 @@ end
 
 """
     extrascan(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         path::String,
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
@@ -470,7 +500,7 @@ Recursively scan the `path` for files and folders not present in the `database` 
 to `waste`. Allow paths listed as extras in the `inventory`. The function returns the `waste`.
 """
 function extrascan(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     path::String,
     database::@NamedTuple{folders::Set{String},files::Set{String}},
     waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
@@ -583,7 +613,7 @@ end
 
 """
     attach_path!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         path::AbstractString,
         logger::Logging.AbstractLogger
     )
@@ -593,7 +623,7 @@ Remove possible sub-folders of `path` previously attached to the `inventory`.
 Log events to the provided `logger`.
 """
 function attach_path!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     path::AbstractString,
     logger::Logging.AbstractLogger
 )::Nothing
@@ -629,7 +659,7 @@ end
 
 """
     detach_path!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         path::AbstractString,
         logger::Logging.AbstractLogger
     ) -> Bool
@@ -639,7 +669,7 @@ The function returns `true` if the path was detached, `false` otherwise.
 Log events to the provided `logger`.
 """
 function detach_path!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     path::AbstractString,
     logger::Logging.AbstractLogger
 )::Bool
@@ -681,7 +711,7 @@ end
 
 """
     detach_parents!(
-        inventory::SortedDict{String,Any},
+        inventory::SortedDict,
         path::AbstractString,
         logger::Logging.AbstractLogger
     )
@@ -690,7 +720,7 @@ Detach parent folders that are exclusive to the given `path` from the `inventory
 Log events to the provided `logger`.
 """
 function detach_parents!(
-    inventory::SortedDict{String,Any},
+    inventory::SortedDict,
     path::String,
     logger::Logging.AbstractLogger,
 )::Nothing
@@ -712,7 +742,7 @@ end
 
 """
     log_ignore(
-        logger::Logging.ConsoleLogger,
+        logger::Logging.AbstractLogger,
         granules::Vector{String},
         msg::AbstractString,
         screenmsg::AbstractString="";
@@ -724,7 +754,7 @@ If `screenmsg` is empty, `msg` is used for both logging and console output.
 The log level can be specified with `level`.
 """
 function log_ignore(
-    logger::Logging.ConsoleLogger,
+    logger::Logging.AbstractLogger,
     granules::Vector{String},
     msg::AbstractString,
     screenmsg::AbstractString="";
@@ -768,4 +798,49 @@ function confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}})::B
     proceed = readline()
     # Return user decision
     return startswith(lowercase(proceed), "y")
+end
+
+
+## Helper functions for display
+
+"""
+    display_size(size::Integer) -> String
+
+Convert a size in bytes to a human-readable string with appropriate unit (B, kB, MB, GB, TB).
+"""
+function display_size(size::Integer)::String
+    s = (size |> digits |> length) - 1
+    s = min(s÷3, 4)
+    unit = Dict(0=>"B", 1=>"kB", 2=>"MB", 3=>"GB", 4=>"TB")
+    return string(round(size / 10^3s, digits=2), unit[s])
+end
+
+
+"""
+    print_year_stats(
+        inventory::SortedDict,
+        year::Integer,
+        dates::Vector{Date},
+        finish::Bool = false
+    )
+
+Print the statistics for a given `year` in the `inventory` based on the provided `dates`.
+Use slightly different formatting for the last year with the `finish` flag.
+"""
+function print_year_stats(
+    inventory::SortedDict,
+    year::Integer,
+    dates::Vector{Date},
+    finish::Bool = false
+)::Nothing
+    stats = inventory_stats(inventory, dates, by_year=true)
+    y = finish ? "└─" : "├─"
+    d = finish ? " " : "│"
+    println("$y $year")
+    println("$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: $(stats["downloaded files"])/",
+        "$(stats["converted files"]) of $(stats["filecount"]) files – ",
+        "$(display_size(stats["downloaded size"]))/$(display_size(stats["converted size"])) ",
+        "of $(display_size(stats["size"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
+    finish && println('\n')
+    return
 end

@@ -17,7 +17,7 @@
         update::Bool = false,
         logfile::String = "downloads.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String,Any}
+    ) -> SortedDict
 
 Download satellite data from the Aeris/ICARE server. The function returns a dictionary with
 the inventory of available online data for the given product.
@@ -81,7 +81,7 @@ function sftp_download(
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
     ## Setup
     # Create product folder, if not existent
     product = isnothing(version) ? product : @sprintf("%s.v%.2f", product, version)
@@ -91,8 +91,6 @@ function sftp_download(
     daterange = (start = startdate, stop = enddate)
     # Enforce database update, if file update is selected
     resync |= update
-    # Enforce to continue any interrupted resync
-    haskey(inventory, "temp") && (resync = true)
     #* Start logging
     logfile, level = init_logging(logfile, productpath, loglevel)
     @info "logging to '$logfile'"
@@ -111,7 +109,7 @@ function sftp_download(
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block
-        inventory = SortedDict{String,Any}()
+        inventory = SortedDict()
         # Get available server dates
         try
             product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
@@ -183,7 +181,7 @@ function icare_connect(
     password::String,
     root::String,
     product::String,
-    logger::Logging.ConsoleLogger,
+    logger::Logging.AbstractLogger,
     __counter__::Int=0
 )::SFTP.Client
     # Connect to server and go to root of selected data
@@ -299,7 +297,7 @@ end
         convert::Bool,
         update::Bool,
         resync::Bool,
-        logger::Logging.ConsoleLogger,
+        logger::Logging.AbstractLogger,
         logio::IO,
         counter::Counter
     )
@@ -317,7 +315,7 @@ function sync!(
     convert::Bool,
     update::Bool,
     resync::Bool,
-    logger::Logging.ConsoleLogger,
+    logger::Logging.AbstractLogger,
     logio::IO,
     counter::Counter
 )::Nothing
@@ -508,12 +506,12 @@ end
 
 
 """
-    log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime)
+    log_counter(counter::Counter, logger::Logging.AbstractLogger, t0::DateTime)
 
 Log the number of downloaded, skipped, and converted files saved in `counter` to `logger`
 together with the time it took since `t0`.
 """
-function log_counter(counter::Counter, logger::Logging.ConsoleLogger, logio::IO, t0::DateTime)::Nothing
+function log_counter(counter::Counter, logger::Logging.AbstractLogger, logio::IO, t0::DateTime)::Nothing
     t1 = Dates.now()
     Logging.with_logger(logger) do
         if counter.downloads > 0

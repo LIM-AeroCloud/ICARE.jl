@@ -52,7 +52,7 @@ function sftp_download(
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
 ```
 
 Download missing CALIOP hdf files for the given `product` (e.g., `"05kmAPro"` or `"01kmCLay"`)

@@ -23,7 +23,8 @@ import Base.Threads: @threads
 const thread = ReentrantLock()
 
 # Export functions and types
-export sftp_download, convert!, clean, Extension, original, converted, ignore!, unignore!, attach!, detach!
+export sftp_download, convert!, clean, Extension, original, converted, ignore!, unignore!,
+    attach!, detach!, list_inventory
 @static if VERSION ≥ v"1.11"
     eval(Meta.parse("public convert"))
 end
