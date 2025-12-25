@@ -243,7 +243,7 @@ function unignore!(
 end
 
 
-""""
+"""
     list_inventory(inventory::SortedDict)
 
 List the content of the `inventory` in a simplified tree structure showing available and already

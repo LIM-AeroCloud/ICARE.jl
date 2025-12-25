@@ -142,7 +142,7 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
 !!! tip
     If you want both formats saved on your local machine, download the original format with
     [`sftp_download`](@ref) by setting `convert` to `false`. Use the [`convert!`](@ref) method
-    to update the file types of the downloaded method.
+    to upgrade the downloaded files to the new format.
 
     If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads
     are not kept. If you later decide, to keep only one format, you can use function [`clean`](@ref)
