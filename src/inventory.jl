@@ -269,7 +269,9 @@ function sync_database!(
     end
     # Save data gaps to inventory
     data_gaps!(inventory)
-    display_gaps(inventory, daterange, logger)
+    gaps = combine_gaps(inventory, daterange, logger)
+    isempty(gaps) || @info "there are data gaps in the current date range (see log file for details)" gaps
+
 
     updated && Logging.with_logger(logger) do
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
@@ -463,20 +465,21 @@ end
 
 
 """
-    display_gaps(
+    combine_gaps(
         inventory::SortedDict,
         daterange::@NamedTuple{start::Date,stop::Date},
         logger::Logging.AbstractLogger
-    )
+    ) -> Vector{String}
 
-Log data gaps in the `inventory` in the given `daterange` to `logger`.
-Combine single dates in the `inventory` metadata to date ranges.
+Combine data gaps with single dates in the `inventory` in the given `daterange` to date ranges
+and return a vector of strings with beautified ranges. Log warnings, when out of `daterange`
+to `logger`.
 """
-function display_gaps(
+function combine_gaps(
     inventory::SortedDict,
     daterange::@NamedTuple{start::Date,stop::Date},
     logger::Logging.AbstractLogger
-)::Nothing
+)::Vector{String}
     #* Get gaps in current date range
     database = inventory["metadata"]["database"]
     current_gaps = inventory["gaps"] |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
@@ -504,7 +507,6 @@ function display_gaps(
         @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
     Date(9999) > daterange.stop > database["stop"] &&
         @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
-    length(gaps) > 0 && @info "there are data gaps in the current date range (see log file for details)" gaps
     # Log to file
     Logging.with_logger(logger) do
         Date(0) < daterange.start < database["start"] &&
@@ -513,6 +515,7 @@ function display_gaps(
             @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
         length(gaps) > 0 && @info "there are data gaps in the current date range" gaps
     end
+    return gaps
 end
 
 
@@ -586,27 +589,33 @@ function inventory_stats(
     stats = Dict{String,Any}()
     # Count dates and granules
     stats["dates"] = length(dates)
-    stats["filecount"] = length.(inventory["dates"][date] for date in dates) |> sum
+    stats["filecount"] = sum(length(inventory["dates"][date]) for date in dates)
     # Gather folder and file data of the inventory
     filedata = [d for date in dates for d in values(inventory["dates"][date])]
-    stats["conversions"] = haskey.(filedata, "size"*inventory["metadata"]["file"]["newext"]) |> count
+    newext = inventory["metadata"]["file"]["newext"]
+    ext = inventory["metadata"]["file"]["ext"]
+    stats["conversions"] = count(d -> haskey(d, "size"*newext), filedata)
     foldersize = 4096*(length(dates) + (Dates.year.(dates) |> unique |> length))
-    stats["size"] = sum(get.(filedata, "size", 0)) + foldersize
+    stats["size"] = sum(get(d, "size", 0) for d in filedata) + foldersize
+    stats["converted size"] = sum(get(d, "size"*newext, 0) for d in filedata)
     # Scan the local database (restrict to the given year, if by_year is true)
-    db = inventory_dates(inventory, none)
-    if by_year
-        filter!(startswith(joinpath(inventory["metadata"]["local"]["path"],
-            string(first(Dates.year.(dates))))), db.folders)
-        filter!(startswith(joinpath(inventory["metadata"]["local"]["path"],
-            string(first(Dates.year.(dates))))), db.files)
-    end
+    db = inventory_dates(inventory, by_year ? dates : none)
     data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
-    # Get file and size statistics
-    stats["downloaded files"] = filter(endswith(inventory["metadata"]["file"]["ext"]), data.files) |> length
-    stats["converted files"] = filter(endswith(inventory["metadata"]["file"]["newext"]), data.files) |> length
-    stats["downloaded size"] = 4096*length(data.folders) +
-        sum(filesize.(data.files |> filter(endswith(inventory["metadata"]["file"]["ext"]))))
-    stats["converted size"] = get.(filedata, "size"*inventory["metadata"]["file"]["newext"], 0) |> sum
+    # Get file and size statistics - count files by extension in a single pass
+    downloaded_files = 0
+    converted_files = 0
+    downloaded_size = 0
+    for file in data.files
+        if endswith(file, ext)
+            downloaded_files += 1
+            downloaded_size += filesize(file)
+        elseif !isempty(newext) && endswith(file, newext)
+            converted_files += 1
+        end
+    end
+    stats["downloaded files"] = downloaded_files
+    stats["converted files"] = converted_files
+    stats["downloaded size"] = 4096*length(data.folders) + downloaded_size
     return stats
 end
 

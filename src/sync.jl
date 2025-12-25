@@ -249,15 +249,32 @@ end
 List the content of the `inventory` in a simplified tree structure showing available and already
 downloaded folders and files and statistics about the inventory content.
 """
-function list_inventory(inventory::SortedDict)::Nothing
+function list_inventory(
+    inventory::SortedDict;
+    list_dates::Bool=true,
+    list_gaps::Bool=true,
+    list_ignored::Bool=true,
+    list_extras::Bool=true
+)::Nothing
     dates = collect(Date, keys(inventory["dates"]))
     years = Dates.year.(dates) |> unique
     date_range = [findall(d -> Dates.year(d) == year, dates) for year in years]
-    println(inventory["metadata"]["remote"]["product"])
-    for d = 1:length(date_range) - 1
-        print_year_stats(inventory, years[d], dates[date_range[d]])
+    list_dates && begin
+        println(inventory["metadata"]["remote"]["product"])
+        for d = 1:length(date_range) - 1
+            print_year_stats(inventory, years[d], dates[date_range[d]])
+        end
+        print_year_stats(inventory, years[end], dates[date_range[end]], true)
     end
-    print_year_stats(inventory, years[end], dates[date_range[end]], true)
+    list_gaps && begin
+        printstyled("Missing dates\n\n", bold=true, underline=true)
+        gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
+            stop = inventory["metadata"]["database"]["stop"]), Logging.ConsoleLogger(Logging.Warn, show_limited=false))
+        if !isempty(gaps)
+            [println(gap) for gap in gaps]
+            println('\n')
+        end
+    end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
     println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
         inventory["metadata"]["database"]["stop"])
@@ -267,13 +284,12 @@ function list_inventory(inventory::SortedDict)::Nothing
         inventory["metadata"]["file"]["conversions"], " of ", inventory["metadata"]["file"]["count"])
     println("size:          ", display_size(inventory["metadata"]["database"]["downloaded size"]),
         "/", display_size(inventory["metadata"]["database"]["converted size"]), " of ",
-        display_size(inventory["metadata"]["database"]["size"]))
-    println()
+        display_size(inventory["metadata"]["database"]["size"]), '\n')
     @info "file sizes are displayed as <downloads in original format>/<converted size> of <total size in original format>"
 end
 
 
-## Helper functions for attaching and detaching extra data
+## Functions for attaching and detaching extra data
 
 """
     attach!(
