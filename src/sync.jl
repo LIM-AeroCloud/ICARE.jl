@@ -55,7 +55,7 @@ function clean!(
     inventory = SortedDict()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
-    clean!(inventory; keepext, erase, logfile, loglevel)
+    clean!(inventory, erase; keepext, logfile, loglevel)
 end
 
 function clean!(
@@ -86,7 +86,7 @@ function clean!(
             end
         end
         # Clean up local database
-        if confirm(waste)
+        if confirm(waste, logger)
             Logging.with_logger(logger) do
                 s = length(waste.files) == 1 ? "" : "s"
                 s_ = length(waste.folders) == 1 ? "" : "s"
@@ -132,7 +132,7 @@ See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_down
 function ignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any};
-    logfile::String = "ingore.log",
+    logfile::String = "ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
@@ -304,7 +304,8 @@ function list_inventory(
     end
     list_extras && haskey(inventory, "extras") && begin
         printstyled("Extras\n\n", bold=true, underline=true)
-        print(inventory["metadata"]["remote"]["product"], "\n├─ ")
+        branch = length(inventory["extras"]) == 1 ? "\n└─ " : "\n├─ "
+        print(inventory["metadata"]["remote"]["product"], branch)
         println(join(inventory["extras"], "\n├─ ", "\n└─ "), '\n')
     end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
@@ -331,8 +332,8 @@ end
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
-Attach extra files and folders to the `inventory` that should be kept during `clean` operations.
-Files nested in foreign folders are recognised as well keeping the parent folders during `clean`
+Attach extra files and folders to the `inventory` that should be kept during `clean!` operations.
+Files nested in foreign folders are recognised as well keeping the parent folders during `clean!`
 operations. The `extras` can be provided as a single `AbstractString` or as a vector of
 `AbstractString`s. The function returns the updated `inventory` and logs events with the
 specified `loglevel` to the `logfile`. A timestamp is appended to the log file name automatically.
@@ -374,7 +375,7 @@ function attach!(
                     continue
                 end
             end
-            # Save parent tree before tempering with path
+            # Save parent tree before tampering with path
             tree = splitpath(path)[1:end-1]
             # Only attach existing paths within the product folder
             abspath = try realpath(joinpath(root, path))
@@ -423,6 +424,8 @@ function attach!(
                 end
             end
         end
+        # Ensure non-empty Extras
+        isempty(inventory["extras"]) && delete!(inventory, "extras")
         # Sort file list
         sort!(inventory["extras"])
         # Save inventory if updated
@@ -441,7 +444,7 @@ end
     ) -> SortedDict
 
 Detach files and folders from the `inventory` that were previously marked as extra data to
-be kept during `clean` operations. If no `extras` are provided, all extra data will be detached.
+be kept during `clean!` operations. If no `extras` are provided, all extra data will be detached.
 For nested files and folders, the parent will be detached as well, if it contains no other extra
 data.
 
@@ -575,6 +578,7 @@ function extrascan(
         # Scan for possible parent folders with allowed nested extras
         extras = joinpath.(path_waste.folders, "")
         filter!(in(extrapaths), extras)
+        # ℹ Remove trailing slash from parent folder and search and remove for them in path_waste.folders
         filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
     else
         extras = String[]
@@ -763,7 +767,7 @@ function detach_path!(
         end
     end
     #* Ensure inventory updates are saved later
-    inventory["metadata"]["local"]["updated"] = Dates.now()
+    inventory["metadata"]["database"]["updated"] = Dates.now()
     return true
 end
 
@@ -829,14 +833,27 @@ end
 
 
 """
-    confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}}) -> Bool
+    confirm(
+        extra::@NamedTuple{folders::Set{String},files::Set{String}},
+        logger::Logging.AbstractLogger
+    ) -> Bool
 
 Prompt the user to confirm the deletion of files and folders listed in `extra`.
-Returns `true`, if the user confirmed with `"yes"`, `false` otherwise.
+Return `true`, if the user confirmed with `"yes"`, `false` otherwise.
+Log events to the provided `logger`.
 """
-function confirm(extra::@NamedTuple{folders::Set{String},files::Set{String}})::Bool
+function confirm(
+    extra::@NamedTuple{folders::Set{String},files::Set{String}},
+    logger::Logging.AbstractLogger
+)::Bool
     # Nothing to clean
-    isempty(extra.folders) && isempty(extra.files) && return true
+    if isempty(extra.folders) && isempty(extra.files)
+        @info "no extra files or folders found, nothing to clean"
+        Logging.with_logger(logger) do
+            @info "no extra files or folders found"
+        end
+        return true
+    end
     # Initial warning
     @warn("The following paths are not part of the inventory and will be removed.",
         _module=nothing, _file=nothing, _line=nothing)

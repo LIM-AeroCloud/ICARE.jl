@@ -258,7 +258,7 @@ function sync_database!(
     delete!(inventory, "temp")
     # Ignore flagged granules
     if resync && haskey(inventory, "ignore")
-        for date in values(inventory["ignore"]), granule in keys(date)
+        for (date, granules) in inventory["ignore"], granule in keys(granules)
             if haskey(inventory["dates"][date], granule)
                 delete!(inventory["dates"][date], granule)
             end
@@ -359,7 +359,7 @@ function remotefiles!(
         )
         # Restore converted file sizes during re-synchronisation
         if resync && haskey(inventory, "temp") && haskey(inventory["temp"], desc) &&
-            inventory["temp"][desc]["size"] == inventory["dates"][date][desc]["size"]
+            inventory["temp"][desc]["size"] == granules[desc]["size"]
             newext = "size"*inventory["metadata"]["file"]["newext"]
             granules[desc][newext] = inventory["temp"][desc][newext]
         end

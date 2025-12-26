@@ -69,7 +69,7 @@ function convert!(
         root = inventory["metadata"]["local"]["path"]
         db = localscan(database, root, intersect)
         # Clean up local database and save inventory
-        conversion(inventory, db["files"], sizecheck, logger)
+        conversion(inventory, db.files, sizecheck, logger)
         save_inventory(inventory, t0)
     end
     return inventory
