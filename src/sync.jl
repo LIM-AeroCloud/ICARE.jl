@@ -465,15 +465,20 @@ end
 
 """
     inventory_dates(
-        inventory::SortedDict, erase::Extension
+        inventory::SortedDict,
+        erase::Extension,
+        date_filter=keys(inventory["dates"])
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Rearrange the `inventory` for better processing as a named tuple with sets of absolute file and
-folder paths. Either `original` or `converted` files might be removed based on the choice of
-`erase`.
+folder paths, filtering by `date_filter` (an iterable of Date objects). Either `original` or
+`converted` files might be removed based on the choice of `erase`. By default, all dates in the
+inventory are included.
 """
 function inventory_dates(
-    inventory::SortedDict, erase::Extension
+    inventory::SortedDict,
+    erase::Extension,
+    date_filter=keys(inventory["dates"])
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Init
     folders, files = Set{String}(), Set{String}()
@@ -481,8 +486,14 @@ function inventory_dates(
     ext, newext = inventory["metadata"]["file"]["ext"], inventory["metadata"]["file"]["newext"]
     # Define inventory as part of files to be kept
     push!(files, joinpath(root, ".inventory.yaml"))
-    # Loop over dates and granules
-    for (date, granules) in inventory["dates"]
+    # Create year set for folder tracking
+    years = Set{Int}()
+    # Loop over filtered dates and granules
+    for date in date_filter
+        haskey(inventory["dates"], date) || continue
+        granules = inventory["dates"][date]
+        # Track years
+        push!(years, Dates.year(date))
         # Define folders of the inventory
         yfolder = joinpath(root, Dates.format(date, "yyyy"))
         dfolder = joinpath(yfolder, Dates.format(date, "yyyy_mm_dd"))

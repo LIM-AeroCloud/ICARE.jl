@@ -483,7 +483,7 @@ function combine_gaps(
     #* Get gaps in current date range
     database = inventory["metadata"]["database"]
     current_gaps = inventory["gaps"] |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
-    isempty(current_gaps) && return
+    isempty(current_gaps) && return String[]
     #* Combine dates to ranges
     current_range = [current_gaps[1]]
     gaps = String[]
@@ -585,38 +585,56 @@ function inventory_stats(
     dates::Vector{Date};
     by_year::Bool=false
 )::Dict{String,Any}
-    # Init
-    stats = Dict{String,Any}()
-    # Count dates and granules
-    stats["dates"] = length(dates)
-    stats["filecount"] = sum(length(inventory["dates"][date]) for date in dates)
-    # Gather folder and file data of the inventory
-    filedata = [d for date in dates for d in values(inventory["dates"][date])]
+    # Pre-extract metadata
     newext = inventory["metadata"]["file"]["newext"]
     ext = inventory["metadata"]["file"]["ext"]
-    stats["conversions"] = count(d -> haskey(d, "size"*newext), filedata)
-    foldersize = 4096*(length(dates) + (Dates.year.(dates) |> unique |> length))
-    stats["size"] = sum(get(d, "size", 0) for d in filedata) + foldersize
-    stats["converted size"] = sum(get(d, "size"*newext, 0) for d in filedata)
+    newext_key = "size"*newext
+
+    # Calculate all inventory-based stats in a single pass
+    filecount = 0
+    conversions = 0
+    size_sum = 0
+    for date in dates
+        granules = inventory["dates"][date]
+        filecount += length(granules)
+        for granule_data in values(granules)
+            size_sum += get(granule_data, "size", 0)
+            if haskey(granule_data, newext_key)
+                conversions += 1
+            end
+        end
+    end
+
     # Scan the local database (restrict to the given year, if by_year is true)
-    db = inventory_dates(inventory, by_year ? dates : none)
+    db = by_year ? inventory_dates(inventory, none, dates) : inventory_dates(inventory, none)
     data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
-    # Get file and size statistics - count files by extension in a single pass
+    num_years = by_year ? 1 : Dates.year.(dates) |> unique |> length
+    # Get file and size statistics
     downloaded_files = 0
     converted_files = 0
     downloaded_size = 0
+    converted_size = 0
     for file in data.files
         if endswith(file, ext)
             downloaded_files += 1
             downloaded_size += filesize(file)
         elseif !isempty(newext) && endswith(file, newext)
             converted_files += 1
+            converted_size += filesize(file)
         end
     end
-    stats["downloaded files"] = downloaded_files
-    stats["converted files"] = converted_files
-    stats["downloaded size"] = 4096*length(data.folders) + downloaded_size
-    return stats
+
+    # Build stats dict
+    return Dict{String,Any}(
+        "dates" => length(dates),
+        "filecount" => filecount,
+        "conversions" => conversions,
+        "size" => size_sum + 4096*(length(dates) + num_years), # ℹ corrected for maximum folder sizes
+        "converted size" => converted_size,
+        "downloaded files" => downloaded_files,
+        "converted files" => converted_files,
+        "downloaded size" => 4096*length(data.folders) + downloaded_size # ℹ corrected for maximum folder sizes
+    )
 end
 
 
