@@ -275,6 +275,16 @@ function list_inventory(
             println('\n')
         end
     end
+    list_ignored && haskey(inventory, "ignore") && begin
+        printstyled("Ignored files\n\n", bold=true, underline=true)
+        print_ignored_tree(inventory)
+        println('\n')
+    end
+    list_extras && haskey(inventory, "extras") && begin
+        printstyled("Extras\n\n", bold=true, underline=true)
+        print(inventory["metadata"]["remote"]["product"], "\n├─ ")
+        println(join(inventory["extras"], "\n├─ ", "\n└─ "), '\n')
+    end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
     println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
         inventory["metadata"]["database"]["stop"])
@@ -840,6 +850,50 @@ function display_size(size::Integer)::String
     s = min(s÷3, 4)
     unit = Dict(0=>"B", 1=>"kB", 2=>"MB", 3=>"GB", 4=>"TB")
     return string(round(size / 10^3s, digits=2), unit[s])
+end
+
+
+"""
+    print_ignored_tree(inventory::SortedDict)
+
+Print a tree structure showing all ignored granules in the `inventory`, organised by year
+and date. Use box-drawing characters to show the hierarchy.
+"""
+function print_ignored_tree(inventory::SortedDict)::Nothing
+    # Get all ignored dates and sort them
+    ignore_dates = collect(keys(inventory["ignore"]))
+    isempty(ignore_dates) && return
+    # Group by year
+    years = unique(Dates.year.(ignore_dates))
+
+    # Print product
+    println(inventory["metadata"]["remote"]["product"])
+    # Iterate through years
+    for (year_idx, year) in enumerate(years)
+        year_dates = filter(d -> Dates.year(d) == year, ignore_dates)
+        is_last_year = year_idx == length(years)
+        year_prefix = is_last_year ? "└─" : "├─"
+        year_continue = is_last_year ? "   " : "│  "
+        println("$year_prefix $year")
+
+        # Iterate through dates in this year
+        for (date_idx, date) in enumerate(year_dates)
+            is_last_date = date_idx == length(year_dates)
+            date_prefix = is_last_date ? "└─" : "├─"
+            date_continue = is_last_date ? "   " : "│  "
+
+            println("$year_continue$date_prefix $(Dates.format(date, "yyyy_mm_dd"))")
+
+            # Iterate through granules in this date
+            granules = collect(keys(inventory["ignore"][date]))
+            for (granule_idx, granule) in enumerate(granules)
+                is_last_granule = granule_idx == length(granules)
+                granule_prefix = is_last_granule ? "└─" : "├─"
+                println("$year_continue$date_continue$granule_prefix $granule")
+            end
+        end
+    end
+    return
 end
 
 
