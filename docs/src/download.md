@@ -145,7 +145,7 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
     to upgrade the downloaded files to the new format.
 
     If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads
-    are not kept. If you later decide, to keep only one format, you can use function [`clean`](@ref)
+    are not kept. If you later decide, to keep only one format, you can use function [`clean!`](@ref)
     to delete one or the other format.
 
 ### Separate file conversions

@@ -2,18 +2,18 @@
 
 ## API functions
 """
-    clean(
-        root::AbstractString=".";
+    clean!(
+        root::AbstractString=".",
+        erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
-    clean(
-        inventory::SortedDict;
+    clean!(
+        inventory::SortedDict,
+        erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        erase::Extension=none,
         logfile::String = "clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
@@ -22,7 +22,12 @@ Clean a product folder recursively from all content not listed in the inventory,
 available on the ICARE server, or not flagged as extra files in the `inventory` extra section
 with the `attach!` function. The function has two methods – you can either provide an
 `AbstractString` with the path of the product folder or the inventory as `SortedDict` of the
-product. Both methods return the `inventory` for reference.
+product. The latter is more performant as the inventory doesn't need to be loaded first.
+
+Both methods allow an optional second argument that specifies whether either the `original`
+or `converted` files should be additionally cleaned from the local database. The optional
+parameter values are predefined constants from the `Extension` enum.
+Both methods return the updated `inventory` for reference.
 
 See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref),
 [`convert!`](@ref), [`convert(::String)`](@ref), [`sftp_download`](@ref)
@@ -32,19 +37,16 @@ See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`]
 - `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
   file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
   the inventory. Can be used to keep log or metadata files.
-- `erase::Extension`: Allows to clean up the database itself. You can choose to erase
-  `original` files (defined by `"ext"` in the inventory metadata), `converted` files
-  (defined by `"newext"` in the inventory metadata) or `none` of the file types.
 - `logfile::String`: The name of the log file (default: `"clean.log"`; the name will be appended
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 """
-function clean end
+function clean! end
 
-function clean(
-    root::AbstractString=".";
+function clean!(
+    root::AbstractString=".",
+    erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
@@ -53,17 +55,18 @@ function clean(
     inventory = SortedDict()
     load_inventory!(inventory, path)
     # Call the clean method for the inventory
-    clean(inventory; keepext, erase, logfile, loglevel)
+    clean!(inventory; keepext, erase, logfile, loglevel)
 end
 
-function clean(
-    inventory::SortedDict;
+function clean!(
+    inventory::SortedDict,
+    erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    erase::Extension=none,
     logfile::String = "clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Start
+    t0 = Dates.now()
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
     open(logfile, "w") do logio
@@ -92,6 +95,15 @@ function clean(
             end
             rm.(waste.files, force=true)
             rm.(waste.folders, recursive=true, force=true)
+            reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
+            isdisjoint(reference, waste.files) || begin
+                inventory["metadata"]["database"]["updated"] = Dates.now()
+                save_inventory(inventory, t0)
+            end
+            @info "clean-up completed"
+            Logging.with_logger(logger) do
+                @info "cleaning completed"
+            end
         else
             @info "aborting clean-up"
             Logging.with_logger(logger) do
@@ -244,10 +256,20 @@ end
 
 
 """
-    list_inventory(inventory::SortedDict)
+    list_inventory(
+        inventory::SortedDict;
+        list_dates::Bool=true,
+        list_gaps::Bool=true,
+        list_ignored::Bool=true,
+        list_extras::Bool=true
+    )
 
 List the content of the `inventory` in a simplified tree structure showing available and already
-downloaded folders and files and statistics about the inventory content.
+downloaded folders and files and statistics about the inventory content. Additionally, missing dates
+(gaps), ignored files, and extra files are listed.
+
+For all but the overall stats, printing can be switched off with keyword arguments
+(`list_dates`, `list_gaps`, `list_ignored`, `list_extras`).
 """
 function list_inventory(
     inventory::SortedDict;
@@ -315,7 +337,7 @@ operations. The `extras` can be provided as a single `AbstractString` or as a ve
 `AbstractString`s. The function returns the updated `inventory` and logs events with the
 specified `loglevel` to the `logfile`. A timestamp is appended to the log file name automatically.
 
-See also: [`detach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+See also: [`detach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function attach!(
     inventory::SortedDict,
@@ -426,7 +448,7 @@ data.
 The function returns the updated `inventory` and logs events with the specified `loglevel`
 to the `logfile`. A timestamp is appended to the log file name automatically.
 
-See also: [`attach!`](@ref), [`clean`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+See also: [`attach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function detach!(
     inventory::SortedDict,
