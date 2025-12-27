@@ -21,6 +21,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Functions `attach!` and `detach!` to mark extra data exempt from `clean!` procedures ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
 - Function `list_inventory` to show a simplified folder and file tree and statistics about
   the inventory and the downloaded portion ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
+- Public method `load_inventory` to load the inventory saved in the product folder ([#32](https://github.com/LIM-AeroCloud/ICARE.jl/issues/32))
 
 ### Changed
 
@@ -43,6 +44,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   leave the method internal and not part of the public API ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
 - **Breaking:** Rename `"productpath"` to `"path"` in `inventory["metadata"]["remote"]` to be more
   in line with the simpler `"local"` naming scheme ([#24](https://github.com/LIM-AeroCloud/ICARE.jl/issues/24))
+- Make internal `load_inventory!` method return a reference to the modified inventory as well
 
 ### Removed
 
