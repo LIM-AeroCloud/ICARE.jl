@@ -463,7 +463,7 @@ function detach!(
 )::SortedDict
     # Initial checks
     t0 = Dates.now()
-    sleep(0.001) # ℹ ensure different updated time from t0
+    sleep(0.002) # ℹ ensure different updated time from t0
     if !haskey(inventory, "extras")
         @info "no extras section found in the inventory, nothing to detach"
         return inventory

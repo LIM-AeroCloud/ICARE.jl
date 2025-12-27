@@ -277,10 +277,10 @@ function sync_database!(
     # Ignore flagged granules
     if resync && haskey(inventory, "ignore")
         for (date, granules) in inventory["ignore"], granule in keys(granules)
-            if haskey(inventory["dates"][date], granule)
+            if haskey(inventory["dates"], date) && haskey(inventory["dates"][date], granule)
                 delete!(inventory["dates"][date], granule)
             end
-            if haskey(inventory["dates"], date) && isempty(inventory["dates"][date])
+            if isempty(inventory["dates"][date])
                 delete!(inventory["dates"], date)
             end
         end
