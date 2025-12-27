@@ -13,7 +13,9 @@ See also: [`list_inventory`](@ref)
 """
 function load_inventory(path::AbstractString)::SortedDict
     inventory = SortedDict{String,Any}()
-    path = joinpath(path, ".inventory.yaml") |> realpath
+    path = joinpath(path, ".inventory.yaml")
+    isfile(path) || throw(ArgumentError(string("inventory '$path' not found, ",
+        "check path to product folder exists and inventory has been created")))
     load_inventory!(inventory, path)
 end
 
