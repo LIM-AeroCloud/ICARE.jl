@@ -13,7 +13,7 @@ function load_inventory(path::AbstractString)::SortedDict
     inventory = SortedDict{String,Any}()
     file = joinpath(path, ".inventory.yaml")
     isfile(file) || throw(ArgumentError(string("no inventory found in '$path', ",
-        "check path to product folder exists and inventory has been created")))
+        "check that the path to the product folder exists and that the inventory has been created")))
     load_inventory!(inventory, file)
 end
 
