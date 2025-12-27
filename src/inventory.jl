@@ -49,8 +49,6 @@ function product_database!(
     sync_database!(icare, inventory, years, daterange, convert, resync, logger)
 end
 
-date_in_years(years::Vector{Int})::Function = date::Date -> Dates.year(date) in years
-
 
 """
     load_inventory!(inventory::SortedDict, file::AbstractString)
@@ -262,7 +260,7 @@ function sync_database!(
             if haskey(inventory["dates"][date], granule)
                 delete!(inventory["dates"][date], granule)
             end
-            if isempty(inventory["dates"][date])
+            if haskey(inventory["dates"], date) && isempty(inventory["dates"][date])
                 delete!(inventory["dates"], date)
             end
         end

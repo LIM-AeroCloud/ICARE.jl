@@ -4,7 +4,7 @@
 
 """
     convert(
-        root::String=".";
+        root::AbstractString=".";
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug

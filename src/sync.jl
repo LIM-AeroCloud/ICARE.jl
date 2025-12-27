@@ -30,7 +30,7 @@ parameter values are predefined constants from the `Extension` enum.
 Both methods return the updated `inventory` for reference.
 
 See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref),
-[`convert!`](@ref), [`convert(::String)`](@ref), [`sftp_download`](@ref)
+[`convert!`](@ref), [`convert(::AbstractString)`](@ref), [`sftp_download`](@ref)
 
 # Keyword Arguments
 
@@ -119,7 +119,7 @@ end
     ignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any};
-        logfile::String = "clean.log",
+        logfile::String = "ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -282,6 +282,7 @@ function list_inventory(
     years = Dates.year.(dates) |> unique
     date_range = [findall(d -> Dates.year(d) == year, dates) for year in years]
     list_dates && begin
+        printstyled("Database overview (with path tree)\n\n", bold=true, underline=true)
         println(inventory["metadata"]["remote"]["product"])
         for d = 1:length(date_range) - 1
             print_year_stats(inventory, years[d], dates[date_range[d]])
@@ -303,10 +304,11 @@ function list_inventory(
         println('\n')
     end
     list_extras && haskey(inventory, "extras") && begin
+        extras = filter(!endswith(Base.Filesystem.path_separator), inventory["extras"])
         printstyled("Extras\n\n", bold=true, underline=true)
-        branch = length(inventory["extras"]) == 1 ? "\n└─ " : "\n├─ "
+        branch = length(extras) == 1 ? "\n└─ " : "\n├─ "
         print(inventory["metadata"]["remote"]["product"], branch)
-        println(join(inventory["extras"], "\n├─ ", "\n└─ "), '\n')
+        println(join(extras, "\n├─ ", "\n└─ "), "\n\n")
     end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
     println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
