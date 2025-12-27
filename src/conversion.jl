@@ -112,11 +112,21 @@ Check, whether the size of the converted `file` is known in the `inventory` and 
 actual file size. Return also `true`, if it was opted out to `convert` the file.
 """
 function converted!(inventory::SortedDict, file::File, convert::Bool)::Bool
-    if convert && haskey(inventory["dates"][file.date][file.name], "size"*file.newext)
-        # Compare file size with inventory
-        inventory["dates"][file.date][file.name]["size"*file.newext] == filesize(file.location.target)
+    if convert
+        # Thread-safe check of inventory and file size
+        has_size_entry = lock(thread) do
+            haskey(inventory["dates"][file.date][file.name], "size"*file.newext)
+        end
+        if has_size_entry
+            expected_size = lock(thread) do
+                inventory["dates"][file.date][file.name]["size"*file.newext]
+            end
+            return expected_size == filesize(file.location.target)
+        else
+            return false
+        end
     else
-        return !convert
+        return true
     end
 end
 
@@ -140,7 +150,11 @@ function set_converted_size!(
 )::Nothing
     # Initial checks
     convert || return
-    haskey(inventory["dates"][file.date][file.name], "size"*file.newext) && return
+    # Thread-safe check if size already exists
+    already_has_size = lock(thread) do
+        haskey(inventory["dates"][file.date][file.name], "size"*file.newext)
+    end
+    already_has_size && return
     if !isfile(file.location.target)
         lock(thread) do
             # Log error, if converted file does not exist

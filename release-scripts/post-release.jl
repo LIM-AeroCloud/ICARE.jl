@@ -1,3 +1,10 @@
+# Parse command line argument for bump type (default: minor)
+bump_type = length(ARGS) > 0 ? lowercase(ARGS[1]) : "minor"
+if !(bump_type in ["minor", "major"])
+    @error "BUMP_TYPE must be 'minor' or 'major', got: $bump_type"
+    exit(1)
+end
+
 # Parse main Project.toml
 project = joinpath(@__DIR__, "..", "Project.toml")
 lines = readlines(project)
@@ -10,11 +17,16 @@ vend -= 1
 println("current version: ", lines[i][vstart:vend])
 version = VersionNumber(lines[i][vstart:vend])
 
-# Set new stable version
-minor = version.minor + 1
-version = string(VersionNumber(version.major, minor, 0), "-DEV")
+# Set new stable version based on bump type
+version = if bump_type == "major"
+    major = version.major + 1
+    string(VersionNumber(major, 0, 0), "-DEV")
+else
+    minor = version.minor + 1
+    string(VersionNumber(version.major, minor, 0), "-DEV")
+end
 lines[i] = vstring * '"' * version * '"'
-println("set version to ", version)
+println("set version to next $bump_type: ", version)
 
 # Save to Project.toml
 open(project, "w+") do io

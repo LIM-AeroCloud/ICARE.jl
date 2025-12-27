@@ -347,7 +347,6 @@ function sync!(
             download(icare, inventory, file, update)
             _convert!(inventory, file, convert, logger)
         catch error
-            rethrow(error)
             lock(thread) do
                 #* Log download errors
                 Logging.with_logger(logger) do
