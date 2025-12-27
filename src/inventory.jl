@@ -7,8 +7,6 @@
 Load the database inventory from the `path` to the product folder (and a hidden yaml file)
 to a `SortedDict`, which can be processed by other ICARE functions.
 
-The function returns the loaded `inventory`.
-
 See also: [`list_inventory`](@ref)
 """
 function load_inventory(path::AbstractString)::SortedDict
