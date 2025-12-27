@@ -1,10 +1,17 @@
 EXEC:=julia
 
+# Detect if major or minor is specified in the command
+ifneq (,$(findstring major,$(MAKECMDGOALS)))
+    BUMP_TYPE=major
+else
+    BUMP_TYPE=minor
+endif
+
 default: help
 
 docs-instantiate:
 	${EXEC} --project -e 'using Pkg; Pkg.rm("SFTP"); Pkg.add(url="https://github.com/LIM-AeroCloud/SFTP.jl", rev="main")'
-	${EXEC} --project=docs -e 'using Pkg; Pkg.instantiate()'
+	${EXEC} --project=docs -e 'using Pkg; Pkg.update(); Pkg.instantiate()'
 
 docs: changelog
 	${EXEC} --project=docs docs/make.jl
@@ -22,7 +29,14 @@ test:
 pre-release: test bump-version docs
 
 post-release:
-	${EXEC} --project=docs release-scripts/post-release.jl
+	${EXEC} --project=docs release-scripts/post-release.jl $(BUMP_TYPE)
+
+# Dummy targets to allow 'make post-release major' syntax
+major:
+	@:
+
+minor:
+	@:
 
 help:
 	@echo "The following make commands are available:"
@@ -31,6 +45,6 @@ help:
 	@echo " - make test: run the tests"
 	@echo " - make bump-version: set version to stable"
 	@echo " - make pre-release: run tests, build docs, update changelog links, and bump version"
-	@echo " - make post-release: increment minor version"
+	@echo " - make post-release [major]: increment version (default: minor)"
 
-.PHONY: default docs-instantiate help changelog docs test bump-version pre-release post-release
+.PHONY: default docs-instantiate help changelog docs test bump-version pre-release post-release major minor

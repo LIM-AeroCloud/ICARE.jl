@@ -17,9 +17,10 @@
         update::Bool = false,
         logfile::String = "downloads.log",
         loglevel::Symbol = :Debug
-   )
+    ) -> SortedDict
 
-Download satellite data from the Aeris/ICARE server.
+Download satellite data from the Aeris/ICARE server. The function returns a dictionary with
+the inventory of available online data for the given product.
 
 !!! note
     To use `sftp_download`, an [Aeris/ICARE account](https://www.icare.univ-lille.fr) is needed
@@ -39,6 +40,9 @@ date is selected and the latest possible end date, e.g. `202003` will give a sta
 defined by `startdate` is downloaded, either a day, or a month (if the day part is omitted)
 or a year (if both day and month are omitted).
 
+See also: [`list_inventory`](@ref), [`convert!`](@ref), [`convert(::AbstractString)`](@ref),
+[`ignore!`](@ref), [`unignore!`](@ref), [`clean!`](@ref)
+
 # Keyword arguments
 
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
@@ -47,7 +51,7 @@ or a year (if both day and month are omitted).
 - `convert::Bool`: Whether or not to convert the downloaded files to another file format (default: `true`).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
-  on the remote server (default: `false`).
+  on the remote server (default: `false`). Converted file sizes will be deleted for any updates.
 - `logfile::String`: The name of the log file (default: `"downloads.log"`; the name will be appended
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
@@ -78,7 +82,7 @@ function sftp_download(
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::Nothing
+)::SortedDict
     ## Setup
     # Create product folder, if not existent
     product = isnothing(version) ? product : @sprintf("%s.v%.2f", product, version)
@@ -94,7 +98,9 @@ function sftp_download(
     open(logfile, "w") do logio
         logger = Logging.ConsoleLogger(logio, level, show_limited=false)
         Logging.with_logger(logger) do
-            @info "downloading '$product' data to '$(realpath(localroot))'"
+            range = daterange.start == daterange.stop ? daterange.start :
+                string(daterange.start, " – ", daterange.stop)
+            @info "downloading '$product' data to '$(realpath(localroot))' for $range"
         end
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
@@ -104,7 +110,7 @@ function sftp_download(
         end
         icare = icare_connect(user, password, remoteroot, product, logger)
         # ℹ Make inventory available for catch block
-        inventory = OrderedDict{String,Any}()
+        inventory = SortedDict()
         # Get available server dates
         try
             product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
@@ -116,9 +122,10 @@ function sftp_download(
             Logging.with_logger(logger) do
                 @error "failed to load local inventory" error
             end
+            data_gaps!(inventory)
             save_inventory(inventory, ts)
             @error "failed to load local inventory" _module=nothing _file=nothing _line=nothing
-            return
+            return inventory
         end
         # Log download session
         t0 = Dates.now()
@@ -137,19 +144,24 @@ function sftp_download(
         counter = Counter()
         # Match folder structure with server
         try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
-        catch
+        catch error
+            Logging.with_logger(logger) do
+                @error "failed to sync with ICARE server" error
+            end
             @error "failed to sync with ICARE server" _module=nothing _file=nothing _line=nothing
         finally
             #* Log end of download session and save inventory
-            save_inventory(inventory, t0)
+            save_inventory(inventory, ts)
             log_counter(counter, logger, logio, t0)
             @info "download session closed"
+            # Return inventory for further investigation after download
+            return inventory
         end
     end #logging to file
 end #function ftp_download
 
 
-## Functions for syncing with server and setting up a local structure, and
+## Functions for syncing with server and setting up a local structure
 
 """
     icare_connect(
@@ -170,7 +182,7 @@ function icare_connect(
     password::String,
     root::String,
     product::String,
-    logger::Logging.ConsoleLogger,
+    logger::Logging.AbstractLogger,
     __counter__::Int=0
 )::SFTP.Client
     # Connect to server and go to root of selected data
@@ -281,12 +293,12 @@ end
 """
     sync!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         daterange::@NamedTuple{start::Date, stop::Date},
         convert::Bool,
         update::Bool,
         resync::Bool,
-        logger::Logging.ConsoleLogger,
+        logger::Logging.AbstractLogger,
         logio::IO,
         counter::Counter
     )
@@ -299,18 +311,18 @@ in the `logio` I/O stream.
 """
 function sync!(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     daterange::@NamedTuple{start::Date, stop::Date},
     convert::Bool,
     update::Bool,
     resync::Bool,
-    logger::Logging.ConsoleLogger,
+    logger::Logging.AbstractLogger,
     logio::IO,
     counter::Counter
 )::Nothing
     #* Define all files for download
-    dates = inventory["dates"].keys |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
-    files = vcat([File.(Ref(icare), Ref(inventory), date, inventory["dates"][date].keys, convert)
+    dates = collect(Date, keys(inventory["dates"])) |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
+    files = vcat([File.(Ref(icare), Ref(inventory), date, collect(String, keys(inventory["dates"][date])), convert)
         for date in dates]...)
 
     prog = pm.Progress(length(files), desc="downloading...")
@@ -329,11 +341,11 @@ function sync!(
             continue
         end
         t0 = Dates.now()
-        orig = isfile(file.location.download)
+        orig = isfile(file.location.download) && filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
-            convert!(inventory, file, convert, logger)
+            _convert!(inventory, file, convert, logger)
         catch error
             lock(thread) do
                 #* Log download errors
@@ -345,13 +357,14 @@ function sync!(
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["server"]["root"],
-                inventory["metadata"]["server"]["product"], logger)
+            @info "second download attempt for $(file.name)"
+            icare = icare_connect(icare.username, icare.password, inventory["metadata"]["remote"]["root"],
+                inventory["metadata"]["remote"]["product"], logger)
             # Check for correct server-side file stats
             update_stats!(icare, inventory, file, resync, logger)
             try
                 download(icare, inventory, file, update)
-                convert!(inventory, file, convert, logger)
+                _convert!(inventory, file, convert, logger)
             catch error
                 lock(thread) do
                     #* Log second download attempt errors
@@ -386,15 +399,15 @@ function sync!(
                     # Log successful downloads
                     counter.downloads += 1
                     Logging.with_logger(logger) do
-                        @debug("downloaded $(file.name) in $(Dates.canonicalize(t1 - t0)) @$t1",
-                            _module=nothing, _file=nothing, _line=nothing)
+                        fsize = inventory["dates"][file.date][file.name]["size"]
+                        msg = @sprintf("%s: downloaded %0.2f MB in %s with %0.2f MB/s @%s", file.name,
+                            fsize / 1e6, Dates.canonicalize(t1 - t0), fsize / (t1 - t0).value / 1e3, t1)
+                        @debug msg _module=nothing _file=nothing _line=nothing
                     end
                 end
             end
         end
-        lock(thread) do
-            flush(logio)
-        end
+        flush(logio)
         pm.next!(prog) # Update progress meter
     end # loop over files
     pm.finish!(prog)
@@ -404,7 +417,7 @@ end
 """
     download!(
         icare::SFTP.Client,
-        inventory::OrderedDict,
+        inventory::SortedDict,
         file::File,
         update
     )
@@ -414,11 +427,15 @@ Only download newer files on the server, if `update` is set to `true`.
 """
 function download(
     icare::SFTP.Client,
-    inventory::OrderedDict,
+    inventory::SortedDict,
     file::File,
     update
 )::Nothing
+    # Check, if file was already downloaded
     downloaded(inventory, file, update, true) && return
+    # Remove incomplete downloads
+    rm(file.location.download, force=true)
+    # Download file from server
     SFTP.download(icare, file.location.remote, file.dir.dst, force=true)
     return
 end
@@ -426,7 +443,7 @@ end
 
 """
     downloaded(
-        inventory::OrderedDict,
+        inventory::SortedDict,
         file::File,
         update::Bool,
         orig::Bool=false
@@ -438,20 +455,20 @@ is set, downloaded returns `false`, if newer versions of the `file` exist on the
 When `orig` is set to `true`, downloaded checks against the downloaded instead of the target file.
 """
 function downloaded(
-    inventory::OrderedDict,
+    inventory::SortedDict,
     file::File,
     update::Bool,
     orig::Bool=false
 )::Bool
     filestats = inventory["dates"][file.date][file.name]
     # Check, if file exists (orig: checks download of original file from server, not converted file)
-    file = orig ? file.location.download : file.location.target
-    isfile(file) || return false
+    dbfile = orig ? file.location.download : file.location.target
+    isfile(dbfile) || return false
     # Get file stats and type
-    localstats = stat(file)
-    size = if splitext(file)[2] == ".h5" && inventory["metadata"]["file"]["ext"] ≠ ".h5" # h5 converted files
+    localstats = stat(dbfile)
+    size = if splitext(dbfile)[2] == ".h5" && inventory["metadata"]["file"]["ext"] ≠ ".h5" # h5 converted files
         # ℹ Compare h5 size or return false for unknown h5 size in inventory
-        haskey(filestats, "converted") && (localstats.size == filestats["converted"])
+        haskey(filestats, "size"*file.newext) && (localstats.size == filestats["size"*file.newext])
     else # original file from server
         localstats.size == filestats["size"]
     end
@@ -464,94 +481,37 @@ function downloaded(
 end
 
 
-"""
-    convert!(
-        inventory::OrderedDict,
-        file::File,
-        convert::Bool,
-        logged::Logging.ConsoleLogger
-    )
-
-Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
-up-to-date or it was opted out to `convert` the file. Log events to `logger`.
-"""
-function convert!(
-    inventory::OrderedDict,
-    file::File,
-    convert::Bool,
-    logger::Logging.ConsoleLogger
-)::Nothing
-    converted!(inventory, file, convert) && return
-    rm(file.location.target, force=true)
-    convert_file(file.location.download, file.location.target, convert)
-    set_converted_size!(inventory, file, convert, logger)
-end
-
-
-"""
-    converted!(inventory::OrderedDict, file::File, convert::Bool) -> Bool
-
-Check, whether the size of the converted `file` is known in the `inventory` and matches the
-actual file size. Return also `true`, if it was opted out to `convert` the file.
-"""
-function converted!(inventory::OrderedDict, file::File, convert::Bool)::Bool
-    if convert && haskey(inventory["dates"][file.date][file.name], "converted")
-        # Compare file size with inventory
-        inventory["dates"][file.date][file.name]["converted"] == filesize(file.location.target)
-    else
-        return !convert
-    end
-end
-
-
-"""
-    set_converted_size!(
-        inventory::OrderedDict,
-        file::File,
-        convert::Bool,
-        logger::Logging.ConsoleLogger
-    )
-
-Set the size of the converted `file` in the `inventory` and mark the `inventory` as updated.
-Log events to `logger`.
-"""
-function set_converted_size!(
-    inventory::OrderedDict,
-    file::File,
-    convert::Bool,
-    logger::Logging.ConsoleLogger
-)::Nothing
-    # Initial checks
-    convert || return
-    haskey(inventory["dates"][file.date][file.name], "converted") && return
-    if !isfile(file.location.target)
-        lock(thread) do
-            # Log error, if converted file does not exist
-            Logging.with_logger(logger) do
-                @error("cannot determine size of '$(file.location.target)'",
-                    _module=nothing, _file=nothing, _line=nothing)
-            end
-        end
-        return
-    end
-    # Save converted file size to inventory
-    lock(thread) do
-        inventory["dates"][file.date][file.name]["converted"] = filesize(file.location.target)
-        inventory["metadata"]["database"]["updated"] = Dates.now()
-    end
-    return
-end
-
-
 ## Functions for logging
 
 """
-    log_counter(counter::Counter, logger::Logging.ConsoleLogger, t0::DateTime)
+    init_logging(logfile::String, rootdir::String, loglevel::Symbol) -> Tuple{String,Logging.LogLevel}
+
+Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
+`rootdir`. Return the updated logfile and the `loglevel` as `Logging.LogLevel`.
+"""
+function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
+    # Set log level
+    level = try getproperty(Logging, loglevel)
+    catch
+        @warn "unknown log level $loglevel; using Debug as default" _module=nothing _file=nothing _line=nothing
+        loglevel = :Debug
+    end
+    # Define log file with timestamp
+    contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
+    logfile, logext = splitext(logfile)
+    logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
+    logfile = expanduser(logfile)
+    return logfile, level
+end
+
+
+"""
+    log_counter(counter::Counter, logger::Logging.AbstractLogger, t0::DateTime)
 
 Log the number of downloaded, skipped, and converted files saved in `counter` to `logger`
 together with the time it took since `t0`.
 """
-function log_counter(counter::Counter, logger::Logging.ConsoleLogger, logio::IO, t0::DateTime)::Nothing
+function log_counter(counter::Counter, logger::Logging.AbstractLogger, logio::IO, t0::DateTime)::Nothing
     t1 = Dates.now()
     Logging.with_logger(logger) do
         if counter.downloads > 0

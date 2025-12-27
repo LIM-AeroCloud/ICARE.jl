@@ -8,12 +8,11 @@ A Julia package for retrieving data from the
 
 | **Release** | **Documentation**                                                                  | **Build Status**                                                          |
 |:----------------------------------------------------------------------------------:|:-------------------------------------------------------------------------:|:---:|
-| <a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.5.1"><img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a> | [![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url] | [![Build Status][CI-img]][CI-url] |
+| <a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0"><img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a> | [![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url] | [![Build Status][CI-img]][CI-url] |
 
 Use function `sftp_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
-data that has a root folder in the format `<product>.v<major>.<minor>` and a subfolder
-structure of years and dates like this: `yyyy/yyyy_mm_dd`.
+data with a folder structure of years and dates like this: `yyyy/yyyy_mm_dd`.
 
 License
 -------
@@ -25,13 +24,12 @@ Installation
 ------------
 
 ICARE.jl is an unregistered Julia package, but can be installed with the package manager. It
-also includes an unregistered dependency `SFTP.jl`, which needs to be install first. For both
-packages, switch to the `main` branch to only obtain stable versions.
+also includes an unregistered dependency `SFTP.jl`, which needs to be install first.
 
 ```julia
 julia> ]
-pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git#main
-pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git#main
+pkg> add https://github.com/LIM-AeroCloud/SFTP.jl.git
+pkg> add https://github.com/LIM-AeroCloud/ICARE.jl.git
 pkg> ← (backspace)
 julia> using ICARE
 ```
@@ -49,12 +47,12 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
-    converter::Union{Nothing,String} = "",
+    convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::Nothing
+)::SortedDict
 ```
 
 Download missing CALIOP hdf files for the given `product` (e.g., `"05kmAPro"` or `"01kmCLay"`)
@@ -83,7 +81,7 @@ exist, you are prompted to confirm it's creation or abort the download.
 In the root folder the following folder structure will be used, missing folders are
 automatically created:
 
-- product folder as `<product>.v<major>.<minor>`
+- product folder (assumed in the format `<product>.v<major>.<minor>`)
   - year folder as `yyyy`
     - date folder as `yyyy_mm_dd`
 
@@ -108,6 +106,13 @@ All log files have the format `path/to/logfile_<timestamp>.ext`.
 This has the advantage that names can be reused for several download sessions and the
 standard file name does not have to be changed. One can also see, when files where last
 downloaded from a glance.
+The following levels exist and can be specified with the `loglevel` keyword as `Symbol`.
+By default, all log messages are shown.
+
+- `:Error`: Only errors (and severe warnings) are shown.
+- `:Warn`: Warnings and errors are shown.
+- `:Info`: Info messages are shown additionally.
+- `:Debug`: All log messages are shown.
 
 ### Example script
 
@@ -119,61 +124,21 @@ using ICARE
 
 # Download all data from the year 2010
 localroot = "/Users/home/data/CALIOP/"
-sftp_download(
-  "user",
-  "PassWord#1!",
-  "05kmCPro",
-  2010;
-  localroot
+inventory = sftp_download(
+    "user",
+    "PassWord#1!",
+    "05kmCPro",
+    2010;
+    localroot
 )
 ```
 
-HDF4 to HDF5 conversion
------------------------
+Tools to analyse and manipulate the database
+--------------------------------------------
 
-> **Note:** File conversion is currently being refactored and may or may not currently work.
-
-```julia
-function hdfupgrade(
-  rootdir::String=".",
-  ext::Union{String,Vector{String}}=[".hdf", ".h4", ".hdf4"];
-  recursive::Bool=true,
-  h5exists::Symbol=:skip,
-  h5ext::String=".h5",
-  clean::Bool=false,
-  logfile::String=joinpath(rootdir, "hdfupgrades.log"),
-  loglevel::Symbol=:Debug
-)::Nothing
-```
-
-Function `hdfupgrade` converts HDF4 to HDF5 files in the given `rootdir`.
-Files ending with `.hdf`, `.h4` or `.hdf4` will be converted to `.h5` files,
-but file extensions can be altered with the `ext` argument or `h5ext` keyword argument.
-Unless `recursive` is set to `false`, `hdfupgrade` will convert all files with the 
-specified extensions in the `rootdir` and all containing subfolders.
-After conversion, HDF4 files may be deleted setting the `clean` flag to `true` and
-confirming with `"yes"` after being prompted to a confirmation at the beginning of the
-function call.
-
-If an h5 file already exists, the following options exist for the conversion
-(given as `Symbol` to the `h5exists` flag):
-
-- `skip` (default): skips conversion and leaves existing HDF5 file
-- `overwrite`: overwrites the existing HDF5 file
-- `cancel`: stops on the first existing HDF5 file
-- `abort`: same as `cancel`, but does not convert HDF4 files up to this point
-
-Log files for the conversion will be created. The path and file name can be specified
-with the `logfile` keyword. A timestamp will be appended to the logfile name, so you
-can reuse `logfile` names. By default, `hdfupgrades_<timestamp>.log` will be saved to
-the `rootdir`.
-The level of information can be reduced. By default, all information is given. The 
-following levels exist, and can be specified with the `loglevel` keyword as `Symbol`:
-
-- `:Error`: Only errors (and severe warnings) are shown.
-- `:Warn`: Warnings and errors are shown.
-- `:Info`: Info messages are shown additionally.
-- `:Debug`: All log messages are shown.
+Further routines exist, to `clean!` the database from any objects not listed in the inventory,
+or for batch conversions of the downloaded files (default routines upgrade HDF4 to HDF5 files).
+See, the [documentation][docs-stable-url] for more details.
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://LIM-AeroCloud.github.io/ICARE.jl/stable/
