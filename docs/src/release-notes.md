@@ -9,15 +9,20 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## [UNRELEASED]
 
-## Added
+### Added
 
 - Improved error handling during download
 - Methods `convert`/`convert!` for batch conversions of inventory data files separated from
   download sessions ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
-- Method `clean` to clean the product folder recursively from any files not belonging to the inventory
-  ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
+- Method `clean!` to clean the product folder recursively from any files not belonging to the
+  inventory ([#16](https://github.com/LIM-AeroCloud/ICARE.jl/issues/16))
+- Functions `ignore!` and `unignore!` to exclude database files in the inventory and include
+  them again ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
+- Functions `attach!` and `detach!` to mark extra data exempt from `clean!` procedures ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
+- Function `list_inventory` to show a simplified folder and file tree and statistics about
+  the inventory and the downloaded portion ([#17](https://github.com/LIM-AeroCloud/ICARE.jl/issues/17))
 
-## Changed
+### Changed
 
 - `sftp_download` now returns the inventory for further exploration ([#20](https://github.com/LIM-AeroCloud/ICARE.jl/issues/20))
 - Refactored inventory internally to mostly use `SortedDict` instead of `OrderedDict`;
@@ -39,7 +44,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - **Breaking:** Rename `"productpath"` to `"path"` in `inventory["metadata"]["remote"]` to be more
   in line with the simpler `"local"` naming scheme ([#24](https://github.com/LIM-AeroCloud/ICARE.jl/issues/24))
 
-## Removed
+### Removed
 
 - Method `hdfupgrade` and all auxiliary code was removed and replaced by methods `convert` and `convert!`
 

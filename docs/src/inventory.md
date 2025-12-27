@@ -3,10 +3,16 @@
 ## Analysing the inventory
 
 The structure and files including file stats are saved in an inventory that is returned by all
-API functions [`sftp_download`](@ref), [`clean`](@ref), [`convert!`](@ref), and [`convert`](@ref).
+API functions like [`sftp_download`](@ref), [`clean!`](@ref), [`convert!`](@ref), and [`convert`](@ref).
 The inventory is a `SortedDict` that saves relevant data such as the available data range,
-the file count and the overall size in the metadata. Stats about the data file are kept in the
-`"dates"` section and missing dates are listed in `"gaps"`.
+the file count and the overall size in the metadata. Stats about the data files are kept in the
+`"dates"` section and missing dates are listed in `"gaps"`. Function [`list_inventory`](@ref)
+gives a simplified view of the folder and file tree together with important statistics about the
+inventory and the downloaded portion.
+
+```@docs
+list_inventory
+```
 
 ## Manipulating the inventory
 
@@ -29,7 +35,7 @@ convert!
 
 ### Cleaning up the inventory
 
-Function [`clean`](@ref) can be used to remove all files in a product folder that do not belong
+Function [`clean!`](@ref) can be used to remove all files in a product folder that do not belong
 to the database, i.e. that don't exist on the ICARE server. Files will be permanently deleted,
 but the user will always be shown, which files will be deleted, and ask for confirmation.
 
@@ -49,14 +55,48 @@ overwritten.
 !!! warning
     The [`Extension`](@ref) enum together with the values `original` and `converted` is exported
     by _ICARE.jl_. Do not unintentionally overwrite them or you will get error messages, when
-    trying to set the `erase` option in [`clean`](@ref).
+    trying to set the `erase` option in [`clean!`](@ref), unless you prepend the constants with
+    the module name `ICARE.original` and `ICARE.converted`.
 
 !!! danger
-    If the original files are removed during [`clean`](@ref), they are permanently lost and
+    If the original files are removed during [`clean!`](@ref), they are permanently lost and
     will have to be re-downloaded, if needed. If converted files are deleted, they can be converted
-    again from the original, which is much faster than downloading.
+    again, if the originals are still present, which is much faster than downloading.
 
 ```@docs
-clean
+clean!
 Extension
+```
+
+### Ignoring granules in the inventory
+
+Users can choose to ignore specific granules in the inventory. This functionality is meant for
+corrupted files in the remote database and will allow to remove them from the inventory and
+suppress re-downloads. Ignored files are not considered part of the inventory and are moved
+from the inventory's `dates` section to an `ignore` section, when function [`ignore!`](@ref) is
+invoked. The can be re-joined with the inventory, e.g. when files in the remote database are
+fixed, with function [`unignore!`](@ref). Already downloaded, but ignored files will be deleted
+during [`clean!`](@ref) operations.
+
+```@docs
+ignore!
+unignore!
+```
+
+### Allowing extra data in the product folder
+
+Normally, the product folder should be a direct copy of the remote database with the exception
+of the `.inventory.yaml` and any log files. However, some users might also want to store additional
+metadata, analyses of the database files or results from any investigations. For these reasons,
+additional files and folders can be flagged as `extras` and are added to an `extras` section
+in the inventory. Files in the `extras` section of the inventory are considered attached to the
+inventory, but not part of the database. They will be kept during [`clean!`](@ref) operations,
+but don't have influence on downloads or anything else.
+
+Function [`attach!`](@ref) can be used to flag files and folders as `extras` and function
+[`detach!`](@ref) will remove them again and allow for them to be cleaned.
+
+```@docs
+attach!
+detach!
 ```

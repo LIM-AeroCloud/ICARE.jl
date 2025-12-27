@@ -4,27 +4,29 @@
 
 """
     convert(
-        root::String=".";
+        root::AbstractString=".";
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict
 
 Convert all files in `root` and part of the inventory to a new format as defined in the inventory.
 If files of the new format already exist, they are skipped unless `sizecheck` is set to `true`,
 which will reconvert any file whose size differs from that listed in the inventory.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+
+See also: [`convert!`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function Base.convert(
     root::AbstractString=".";
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict
     # Load the inventory from the yaml in the given root
     path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict{String, Any}()
+    inventory = SortedDict()
     load_inventory!(inventory, path)
     # Call the conversion method for the inventory
     convert!(inventory; sizecheck, logfile, loglevel)
@@ -33,11 +35,11 @@ end
 
 """
     convert!(
-        inventory::SortedDict{String, Any};
+        inventory::SortedDict;
         sizecheck::Bool=false,
         logfile::String = "conversions.log",
         loglevel::Symbol = :Debug
-    ) -> SortedDict{String, Any}
+    ) -> SortedDict
 
 Convert all files in the local database and part of the `inventory` to a new format as defined
 in the `inventory`. If files of the new format already exist, they are skipped unless `sizecheck`
@@ -45,13 +47,15 @@ is set to `true`, which will reconvert any file whose size differs from that lis
 `inventory`.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+
+See also: [`convert`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert!(
-    inventory::SortedDict{String, Any};
+    inventory::SortedDict;
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String, Any}
+)::SortedDict
     # Start
     t0 = Dates.now()
     logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
@@ -66,9 +70,7 @@ function convert!(
         db = localscan(database, root, intersect)
         # Clean up local database and save inventory
         conversion(inventory, db.files, sizecheck, logger)
-        if inventory["metadata"]["database"]["updated"] > t0
-            save_inventory(inventory, t0)
-        end
+        save_inventory(inventory, t0)
     end
     return inventory
 end
@@ -84,7 +86,7 @@ end
         inventory::SortedDict,
         file::File,
         convert::Bool,
-        logger::Logging.ConsoleLogger
+        logger::Logging.AbstractLogger
     )
 
 Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
@@ -94,7 +96,7 @@ function _convert!(
     inventory::SortedDict,
     file::File,
     convert::Bool,
-    logger::Logging.ConsoleLogger
+    logger::Logging.AbstractLogger
 )::Nothing
     converted!(inventory, file, convert) && return
     rm(file.location.target, force=true)
@@ -124,7 +126,7 @@ end
         inventory::SortedDict,
         file::File,
         convert::Bool,
-        logger::Logging.ConsoleLogger
+        logger::Logging.AbstractLogger
     )
 
 Set the size of the converted `file` in the `inventory` and mark the `inventory` as updated.
@@ -134,7 +136,7 @@ function set_converted_size!(
     inventory::SortedDict,
     file::File,
     convert::Bool,
-    logger::Logging.ConsoleLogger
+    logger::Logging.AbstractLogger
 )::Nothing
     # Initial checks
     convert || return
@@ -162,10 +164,10 @@ end
 
 """
     conversion(
-        inventory::SortedDict{String, Any},
+        inventory::SortedDict,
         files::Set{String},
         sizecheck::Bool,
-        logger::Logging.ConsoleLogger
+        logger::Logging.AbstractLogger
     )
 
 Convert all `files` part of the `inventory` to a new format as defined in the `inventory`.
@@ -173,10 +175,10 @@ Conversions are skipped, if files of the new format already exist and either the
 the one listed in the `inventory` or `sizecheck` is set to `false`. Log events to `logger`.
 """
 function conversion(
-    inventory::SortedDict{String, Any},
+    inventory::SortedDict,
     files::Set{String},
     sizecheck::Bool,
-    logger::Logging.ConsoleLogger
+    logger::Logging.AbstractLogger
 )::Nothing
     # Remove .inventory.yaml from files to convert
     ext = inventory["metadata"]["file"]["ext"]

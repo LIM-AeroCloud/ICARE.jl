@@ -1,7 +1,7 @@
 name = "ICARE"
 uuid = "d4da717d-1138-44a6-9758-4f5a9640abeb"
-authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 version = "0.6.0-DEV"
+authors = ["Peter Bräuer <pb866.git@gmail.com>"]
 
 [deps]
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
@@ -11,9 +11,6 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 SFTP = "f44f501d-421f-4286-bfa3-132bd4e9b35e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
-
-[sources]
-SFTP = {rev = "main", url = "https://github.com/LIM-AeroCloud/SFTP.jl"}
 
 [compat]
 DataStructures = "0.19.1"

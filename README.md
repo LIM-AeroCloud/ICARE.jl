@@ -52,7 +52,7 @@ function sftp_download(
     update::Bool = false,
     logfile::String = "downloads.log",
     loglevel::Symbol = :Debug
-)::SortedDict{String,Any}
+)::SortedDict
 ```
 
 Download missing CALIOP hdf files for the given `product` (e.g., `"05kmAPro"` or `"01kmCLay"`)
@@ -124,19 +124,19 @@ using ICARE
 
 # Download all data from the year 2010
 localroot = "/Users/home/data/CALIOP/"
-sftp_download(
-  "user",
-  "PassWord#1!",
-  "05kmCPro",
-  2010;
-  localroot
+inventory = sftp_download(
+    "user",
+    "PassWord#1!",
+    "05kmCPro",
+    2010;
+    localroot
 )
 ```
 
 Tools to analyse and manipulate the database
 --------------------------------------------
 
-Further routines exist, to `clean` the database from any objects not listed in the inventory,
+Further routines exist, to `clean!` the database from any objects not listed in the inventory,
 or for batch conversions of the downloaded files (default routines upgrade HDF4 to HDF5 files).
 See, the [documentation][docs-stable-url] for more details.
 
