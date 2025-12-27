@@ -10,10 +10,10 @@ the file count and the overall size in the metadata. Stats about the data files 
 gives a simplified view of the folder and file tree together with important statistics about the
 inventory and the downloaded portion.
 
-Any function relying on the inventory, will load it when needed. However, the inventory can also
-be loaded on its own with [`load_inventory`](@ref). For many functions, convenience method exists
-that loads the inventory from the hidden `.inventory.yaml` in the product folder and a more
-performant method exists using the preloaded inventory skipping the load step.
+Any function relying on the inventory will load it when needed. However, the inventory can also
+be loaded on its own with [`load_inventory`](@ref). For many functions, convenience methods exist
+that load the inventory from the hidden `.inventory.yaml` in the product folder and more
+performant methods exist using the preloaded inventory, skipping the load step.
 
 ```@docs
 load_inventory
