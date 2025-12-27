@@ -1,4 +1,23 @@
 ## Routines related to creating and processing the local inventory
+## API functions
+
+"""
+    load_inventory(path::AbstractString) -> SortedDict
+
+Load the database inventory from the `path` to the product folder (and a hidden yaml file)
+to a `SortedDict`, which can be processed by other ICARE functions.
+
+The function returns the loaded `inventory`.
+
+See also: [`list_inventory`](@ref)
+"""
+function load_inventory(path::AbstractString)::SortedDict
+    inventory = SortedDict{String,Any}()
+    path = joinpath(path, ".inventory.yaml") |> realpath
+    load_inventory!(inventory, path)
+end
+
+
 ## Functions for loading and setting up the inventory
 
 """
@@ -51,11 +70,12 @@ end
 
 
 """
-    load_inventory!(inventory::SortedDict, file::AbstractString)
+    load_inventory!(inventory::SortedDict, file::AbstractString) -> SortedDict
 
 Load data from a yaml `file` to the `inventory`.
+The function returns an additional reference to the modified `inventory`.
 """
-function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
+function load_inventory!(inventory::SortedDict, file::AbstractString)::SortedDict
     # Load inventory with sorted entries
     @info "loading local inventory"
     for (key, value) in YAML.load_file(file, dicttype=SortedDict)
@@ -87,7 +107,7 @@ function load_inventory!(inventory::SortedDict, file::AbstractString)::Nothing
     )
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
-    return
+    return inventory
 end
 
 
