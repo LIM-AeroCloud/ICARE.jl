@@ -7,6 +7,14 @@ EditURL = "https://github.com/LIM-AeroCloud/ICARE.jl/blob/master/CHANGELOG.md"
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [UNRELEASED]
+
+### Changed
+
+- Improved Logging for `sftp_download` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- Don't consider folder sizes for database size, this is too buggy and inaccurate
+- Use thin spaces between size and unit to log to console and file
+
 ## [v0.6.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0) - 2025-12-27
 
 ### Added

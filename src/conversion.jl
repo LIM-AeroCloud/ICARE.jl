@@ -212,8 +212,7 @@ function conversion(
         lock(thread) do
             # Log converted files
             Logging.with_logger(logger) do
-                @debug("convert '$(file.name)'",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @debug "convert '$(file.name)'" _module=nothing _file=nothing _line=nothing
             end
         end
         _convert!(inventory, file, true, logger)

@@ -423,7 +423,7 @@ function update_stats!(
         end
         if !isempty(obsolete)
             Logging.with_logger(logger) do
-                @warn "deleting obsolete files for $(file.date)" obsolete
+                @warn "deleting obsolete files for $(file.date)" obsolete _module=nothing _file=nothing _line=nothing
                 inventory["metadata"]["database"]["updated"] = Dates.now()
             end
         end
@@ -647,11 +647,11 @@ function inventory_stats(
         "dates" => length(dates),
         "filecount" => filecount,
         "conversions" => conversions,
-        "size" => size_sum + 4096*(length(dates) + num_years), # ℹ corrected for maximum folder sizes
+        "size" => size_sum,
         "converted size" => converted_size,
         "downloaded files" => downloaded_files,
         "converted files" => converted_files,
-        "downloaded size" => 4096*length(data.folders) + downloaded_size # ℹ corrected for maximum folder sizes
+        "downloaded size" => downloaded_size
     )
 end
 
@@ -680,7 +680,8 @@ function check_localroot!(
     if root ≠ origin
         origin = joinpath(origin, product)
         update = joinpath(root, product)
-        @warn "product folder was recently moved; updating inventory" origin update
+        @warn("product folder was recently moved; updating inventory", origin, update,
+            _module=nothing, _file=nothing, _line=nothing)
         inventory["metadata"]["local"]["root"] = root
         inventory["metadata"]["local"]["path"] = update
         inventory["metadata"]["database"]["updated"] = Dates.now()

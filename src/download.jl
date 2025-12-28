@@ -84,6 +84,8 @@ function sftp_download(
     loglevel::Symbol = :Debug
 )::SortedDict
     ## Setup
+    # Save original parameters for logging
+    prod, start, stop, resynchronisation = product, startdate, enddate, resync
     # Create product folder, if not existent
     product = isnothing(version) ? product : @sprintf("%s.v%.2f", product, version)
     productpath = set_localroot(localroot, product)
@@ -101,6 +103,10 @@ function sftp_download(
             range = daterange.start == daterange.stop ? daterange.start :
                 string(daterange.start, " – ", daterange.stop)
             @info "downloading '$product' data to '$(realpath(localroot))' for $range"
+            @debug("parameters", product=prod, version=version, startdate=start, enddate=stop,
+                remoteroot=remoteroot, localroot=localroot, convert=convert,
+                resync=resynchronisation, update=update, loglevel=loglevel,
+                _module=nothing, _file=nothing, _line=nothing)
         end
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
@@ -120,7 +126,7 @@ function sftp_download(
             end
         catch error
             Logging.with_logger(logger) do
-                @error "failed to load local inventory" error
+                @error "failed to load local inventory" error _module=nothing _file=nothing _line=nothing
             end
             data_gaps!(inventory)
             save_inventory(inventory, ts)
@@ -129,24 +135,21 @@ function sftp_download(
         end
         # Log download session
         t0 = Dates.now()
+        @info("starting up to $(Threads.nthreads()) parallel downloads\n"*
+            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
         Logging.with_logger(logger) do
-            not = resync ? "" : " not"
             @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
-            @info "files will$not be updated, if newer files are available on the server"
             flush(logio)
         end
 
         ## Download
         #* Download missing data from server
-        @info "downloading data from ICARE server"
-        @info("up to $(Threads.nthreads()) parallel downloads available\n"*
-            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
         counter = Counter()
         # Match folder structure with server
         try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
         catch error
             Logging.with_logger(logger) do
-                @error "failed to sync with ICARE server" error
+                @error "failed to sync with ICARE server" error _module=nothing _file=nothing _line=nothing
             end
             @error "failed to sync with ICARE server" _module=nothing _file=nothing _line=nothing
         finally
@@ -168,7 +171,8 @@ end #function ftp_download
         user::String,
         password::String,
         root::String,
-        product::String
+        product::String,
+        logger::Logging.AbstractLogger
     ) -> SFTP.Client
 
 Securely connect to the server with SFTP using the credentials `user` and `password`
@@ -176,6 +180,7 @@ and changing to the `product` folder in the `root` directory.
 
 Several checks are performed about the connection and folder structure and a
 `SFTP.Client` type with all the relevant information about the server is returned.
+Connection issues are logged to `logger`.
 """
 function icare_connect(
     user::String,
@@ -193,12 +198,14 @@ function icare_connect(
         if error isa RequestError && error.code == 6
             if __counter__ == 5
                 Logging.with_logger(logger) do
-                    @error "failed to connect to ICARE server; abort downloads"
+                    @error("failed to connect to ICARE server; abort downloads",
+                        _module=nothing, _file=nothing, _line=nothing)
                 end
                 throw(ConnectionError("failed to connect to ICARE server 5 times"))
             else
                 __counter__ += 1
-                @warn "failed to connect to server; attempting again in $wait seconds"
+                @warn("failed to connect to server; attempting again in $wait seconds",
+                    _module=nothing, _file=nothing, _line=nothing)
                 # Wait a minute, then reconnect
                 sleep(wait)
                 icare_connect(user, password, root, product, logger, __counter__)
@@ -206,19 +213,21 @@ function icare_connect(
             end
         elseif error isa RequestError && error.code == 9
             Logging.with_logger(logger) do
-                @warn "remote root not verified"
+                @warn "remote root not verified" _module=nothing _file=nothing _line=nothing
             end
             @warn("unable to verify remote root due to restricted access of parent folder",
                 _module=nothing, _file=nothing, _line=nothing)
             icare.uri = SFTP.URI(icare.uri, path=root)
         elseif error isa RequestError && error.code == 67
             Logging.with_logger(logger) do
-                @error "unable to connect to server; check user credentials"
+                @error("unable to connect to server; check user credentials",
+                    _module=nothing, _file=nothing, _line=nothing)
             end
             throw(Base.IOError("could not connect to ICARE server; check user name and password", Integer(SFTP.EC_DIR_NOT_FOUND)))
         else
             Logging.with_logger(logger) do
-                @error "unknown connection error when trying to connect to ICARE server"
+                @error("unknown connection error when trying to connect to ICARE server",
+                    error, _module=nothing, _file=nothing, _line=nothing)
             end
             rethrow(error)
         end
@@ -321,9 +330,23 @@ function sync!(
     counter::Counter
 )::Nothing
     #* Define all files for download
-    dates = collect(Date, keys(inventory["dates"])) |> filter(d -> daterange.start ≤ d ≤ daterange.stop)
+    dates = dates = filter(!in(inventory["gaps"]), daterange.start:daterange.stop)
     files = vcat([File.(Ref(icare), Ref(inventory), date, collect(String, keys(inventory["dates"][date])), convert)
         for date in dates]...)
+    # Log planned downloads
+    stats =inventory_stats(inventory, dates)
+    @info("$(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"]) files "*
+        "($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"]))) "*
+        "planned for download, $(stats["downloaded files"]) files "*
+        "($(display_size(stats["downloaded size"]))) already downloaded")
+    Logging.with_logger(logger) do
+        @info("files planned for download: $(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"])"*
+            " ($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"])))",
+            _module=nothing, _file=nothing, _line=nothing)
+        not = resync ? "" : " not"
+        @info "files will$not be updated, if newer files are available on the server"
+        flush(logio)
+    end
 
     prog = pm.Progress(length(files), desc="downloading...")
     @threads for file in files
@@ -341,7 +364,8 @@ function sync!(
             continue
         end
         t0 = Dates.now()
-        orig = isfile(file.location.download) && filesize(file.location.download) == inventory["dates"][file.date][file.name]["size"]
+        orig = isfile(file.location.download) && filesize(file.location.download) ==
+            inventory["dates"][file.date][file.name]["size"]
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
@@ -357,7 +381,10 @@ function sync!(
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            @info "second download attempt for $(file.name)"
+            Logging.with_logger(logger) do
+                @warn("download failed for $(file.name); attempting a second download",
+                    _module=nothing, _file=nothing, _line=nothing)
+            end
             icare = icare_connect(icare.username, icare.password, inventory["metadata"]["remote"]["root"],
                 inventory["metadata"]["remote"]["product"], logger)
             # Check for correct server-side file stats
@@ -369,7 +396,7 @@ function sync!(
                 lock(thread) do
                     #* Log second download attempt errors
                     Logging.with_logger(logger) do
-                        @error("Second download attempt failed for $(file.name); no further attempts",
+                        @error("second download attempt failed for $(file.name); no further attempts",
                             error, _module=nothing, _file=nothing, _line=nothing)
                     end
                 end
