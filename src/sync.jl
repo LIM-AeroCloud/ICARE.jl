@@ -91,8 +91,7 @@ function clean!(
                 s = length(waste.files) == 1 ? "" : "s"
                 s_ = length(waste.folders) == 1 ? "" : "s"
                 @warn("cleaning $(length(waste.files)) file$s and $(length(waste.folders)) folder$s_",
-                    folders = waste.folders |> collect |> sort, files = waste.files |> collect |> sort,
-                    _module=nothing, _file=nothing, _line=nothing)
+                    folders = waste.folders |> collect |> sort, files = waste.files |> collect |> sort)
             end
             rm.(waste.files, force=true)
             rm.(waste.folders, recursive=true, force=true)
@@ -147,10 +146,9 @@ function ignore!(
         for (date, granules) in dates
             # Skip dates not in the inventory
             if !haskey(inventory["dates"], date)
-                @warn("$date is not part of the inventory, only dates actually present in the inventory can be ignored",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @warn "$date is not part of the inventory, only dates actually present in the inventory can be ignored"
                 Logging.with_logger(logger) do
-                    @warn "$date not found in inventory, skip ignoring" _module=nothing _file=nothing _line=nothing
+                    @warn "$date not found in inventory, skip ignoring"
                 end
                 continue
             end
@@ -372,10 +370,9 @@ function attach!(
                     r = length(root) + 2 # ℹ next index after slash
                     path = path[r:end]
                 else
-                    @warn "'$path' is outside the product folder, skipping" _module=nothing _file=nothing _line=nothing
+                    @warn "'$path' is outside the product folder, skipping"
                     Logging.with_logger(logger) do
-                        @warn("'$path' is outside the product folder, skip attaching",
-                            _module=nothing, _file=nothing, _line=nothing)
+                        @warn "'$path' is outside the product folder, skip attaching"
                     end
                     continue
                 end
@@ -386,18 +383,16 @@ function attach!(
             abspath = try realpath(joinpath(root, path))
             catch err
                 if err isa Base.IOError
-                    @warn("'$path' does not exist in the product folder, skipping",
-                        _module=nothing, _file=nothing, _line=nothing)
+                    @warn "'$path' does not exist in the product folder, skipping"
                     Logging.with_logger(logger) do
-                        @warn("'$path' not found in the product folder, skip attaching",
-                            _module=nothing, _file=nothing, _line=nothing)
+                        @warn "'$path' not found in the product folder, skip attaching"
                     end
                 else
                     @warn("unexpected error when accessing '$path' in the product folder, skipping path",
-                        err, _module=nothing, _file=nothing, _line=nothing)
+                        err)
                     Logging.with_logger(logger) do
                         @warn("unexpected error when accessing '$path' in the product folder, skip attaching",
-                            err, _module=nothing, _file=nothing, _line=nothing)
+                            err)
                     end
                 end
                 continue
@@ -409,16 +404,14 @@ function attach!(
                 end
                 continue
             elseif !startswith(abspath, root)
-                @warn("'$path' is outside the product folder, skipping",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @warn "'$path' is outside the product folder, skipping"
                 Logging.with_logger(logger) do
-                    @warn("'$path' is outside the product folder, skip attaching",
-                        _module=nothing, _file=nothing, _line=nothing)
+                    @warn "'$path' is outside the product folder, skip attaching"
                 end
                 continue
             end
             Logging.with_logger(logger) do
-                @debug "attaching '$path' to extras" _module=nothing _file=nothing _line=nothing
+                @debug "attaching '$path' to extras"
             end
             # Save path after successful checks
             attach_path!(inventory, path, logger)
@@ -431,8 +424,7 @@ function attach!(
                 parent in inventory["extras"] && break
                 push!(inventory["extras"], parent)
                 Logging.with_logger(logger) do
-                    @debug("attaching parent folder '$parent' to extras",
-                        _module=nothing, _file=nothing, _line=nothing)
+                    @debug("attaching parent folder '$parent' to extras")
                 end
             end
         end
@@ -723,9 +715,9 @@ function attach_path!(
     end
     # Attach path
     push!(inventory["extras"], path)
-    @debug "attached '$path' to extras" _module=nothing _file=nothing _line=nothing
+    @debug "attached '$path' to extras"
     Logging.with_logger(logger) do
-        @debug "attached '$path' to extras" _module=nothing _file=nothing _line=nothing
+        @debug "attached '$path' to extras"
     end
     inventory["metadata"]["database"]["updated"] = Dates.now()
     return
@@ -768,13 +760,12 @@ function detach_path!(
     extras = filter(startswith(path), inventory["extras"])
     filter!(!in(extras), inventory["extras"])
     if parent
-        @warn("detached a parent folder including other extras", extras,
-            _module=nothing, _file=nothing, _line=nothing)
+        @warn "detached a parent folder including other extras" extras
         Logging.with_logger(logger) do
             @info "detached a parent folder including other extras" extras
         end
     else
-        @warn "detached '$path' from extras" _module=nothing _file=nothing _line=nothing
+        @warn "detached '$path' from extras"
         Logging.with_logger(logger) do
             @info "detached '$path' from extras"
         end
@@ -838,9 +829,9 @@ function log_ignore(
 )::Nothing
     isempty(granules) && return
     isempty(screenmsg) && (screenmsg = msg)
-    Logging.@logmsg level screenmsg granules _module=nothing _file=nothing _line=nothing
+    Logging.@logmsg level screenmsg granules
     Logging.with_logger(logger) do
-        Logging.@logmsg level granules msg _module=nothing _file=nothing _line=nothing
+        Logging.@logmsg level granules msg
     end
 end
 
@@ -868,8 +859,7 @@ function confirm(
         return true
     end
     # Initial warning
-    @warn("The following paths are not part of the inventory and will be removed.",
-        _module=nothing, _file=nothing, _line=nothing)
+    @warn "The following paths are not part of the inventory and will be removed."
     # List folders
     if !isempty(extra.folders)
         printstyled("Folders:\n", color=:yellow, bold=true)

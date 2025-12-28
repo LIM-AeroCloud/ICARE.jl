@@ -22,6 +22,25 @@ import Base.Threads: @threads
 # global thread lock
 const thread = ReentrantLock()
 
+# Custom logging macros with source info suppression
+macro debug(msg, args...)
+    return esc(quote
+        Logging.@logmsg Logging.Debug $msg $(args...) _module=nothing _file=nothing _line=nothing
+    end)
+end
+
+macro warn(msg, args...)
+    return esc(quote
+        Logging.@logmsg Logging.Warn $msg $(args...) _module=nothing _file=nothing _line=nothing
+    end)
+end
+
+macro error(msg, args...)
+    return esc(quote
+        Logging.@logmsg Logging.Error $msg $(args...) _module=nothing _file=nothing _line=nothing
+    end)
+end
+
 # Export functions and types
 export sftp_download, convert!, clean!, list_inventory, load_inventory, ignore!, unignore!,
     attach!, detach!, Extension, original, converted

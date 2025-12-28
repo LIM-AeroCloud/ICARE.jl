@@ -159,8 +159,7 @@ function set_converted_size!(
         lock(thread) do
             # Log error, if converted file does not exist
             Logging.with_logger(logger) do
-                @error("cannot determine size of '$(file.location.target)'",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @error "cannot determine size of '$(file.location.target)'"
             end
         end
         return
@@ -212,7 +211,7 @@ function conversion(
         lock(thread) do
             # Log converted files
             Logging.with_logger(logger) do
-                @debug "convert '$(file.name)'" _module=nothing _file=nothing _line=nothing
+                @debug "convert '$(file.name)'"
             end
         end
         _convert!(inventory, file, true, logger)

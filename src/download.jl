@@ -105,8 +105,7 @@ function sftp_download(
             @info "downloading '$product' data to '$(realpath(localroot))' for $range"
             @debug("parameters", product=prod, version=version, startdate=start, enddate=stop,
                 remoteroot=remoteroot, localroot=localroot, convert=convert,
-                resync=resynchronisation, update=update, loglevel=loglevel,
-                _module=nothing, _file=nothing, _line=nothing)
+                resync=resynchronisation, update=update, loglevel=loglevel)
         end
         #* Syncing local and remote database
         # Get connection to server, go to product folder on remote
@@ -126,11 +125,11 @@ function sftp_download(
             end
         catch error
             Logging.with_logger(logger) do
-                @error "failed to load local inventory" error _module=nothing _file=nothing _line=nothing
+                @error "failed to load local inventory" error
             end
             data_gaps!(inventory)
             save_inventory(inventory, ts)
-            @error "failed to load local inventory" _module=nothing _file=nothing _line=nothing
+            @error "failed to load local inventory"
             return inventory
         end
         # Log download session
@@ -149,9 +148,9 @@ function sftp_download(
         try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
         catch error
             Logging.with_logger(logger) do
-                @error "failed to sync with ICARE server" error _module=nothing _file=nothing _line=nothing
+                @error "failed to sync with ICARE server" error
             end
-            @error "failed to sync with ICARE server" _module=nothing _file=nothing _line=nothing
+            @error "failed to sync with ICARE server"
         finally
             #* Log end of download session and save inventory
             save_inventory(inventory, ts)
@@ -198,14 +197,12 @@ function icare_connect(
         if error isa RequestError && error.code == 6
             if __counter__ == 5
                 Logging.with_logger(logger) do
-                    @error("failed to connect to ICARE server; abort downloads",
-                        _module=nothing, _file=nothing, _line=nothing)
+                    @error "failed to connect to ICARE server; abort downloads"
                 end
                 throw(ConnectionError("failed to connect to ICARE server 5 times"))
             else
                 __counter__ += 1
-                @warn("failed to connect to server; attempting again in $wait seconds",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @warn "failed to connect to server; attempting again in $wait seconds"
                 # Wait a minute, then reconnect
                 sleep(wait)
                 icare_connect(user, password, root, product, logger, __counter__)
@@ -213,21 +210,18 @@ function icare_connect(
             end
         elseif error isa RequestError && error.code == 9
             Logging.with_logger(logger) do
-                @warn "remote root not verified" _module=nothing _file=nothing _line=nothing
+                @warn "remote root not verified"
             end
-            @warn("unable to verify remote root due to restricted access of parent folder",
-                _module=nothing, _file=nothing, _line=nothing)
+            @warn "unable to verify remote root due to restricted access of parent folder"
             icare.uri = SFTP.URI(icare.uri, path=root)
         elseif error isa RequestError && error.code == 67
             Logging.with_logger(logger) do
-                @error("unable to connect to server; check user credentials",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @error "unable to connect to server; check user credentials"
             end
             throw(Base.IOError("could not connect to ICARE server; check user name and password", Integer(SFTP.EC_DIR_NOT_FOUND)))
         else
             Logging.with_logger(logger) do
-                @error("unknown connection error when trying to connect to ICARE server",
-                    error, _module=nothing, _file=nothing, _line=nothing)
+                @error "unknown connection error when trying to connect to ICARE server" error
             end
             rethrow(error)
         end
@@ -252,7 +246,7 @@ function set_localroot(localroot::String, mainfolder::String)::String
     productpath = joinpath(localroot, mainfolder)
     if !isdir(localroot)
         # Confirm to create non-exiting local root
-        @warn "root directory $localroot does not exist" _module=nothing _file=nothing _line=nothing
+        @warn "root directory $localroot does not exist"
         print("Create? (y/n) ")
         create = readline()
         if startswith(lowercase(create), "y")
@@ -341,8 +335,7 @@ function sync!(
         "($(display_size(stats["downloaded size"]))) already downloaded")
     Logging.with_logger(logger) do
         @info("files planned for download: $(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"])"*
-            " ($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"])))",
-            _module=nothing, _file=nothing, _line=nothing)
+            " ($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"])))")
         not = resync ? "" : " not"
         @info "files will$not be updated, if newer files are available on the server"
         flush(logio)
@@ -355,7 +348,7 @@ function sync!(
             lock(thread) do
                 #* Log skipped files
                 Logging.with_logger(logger) do
-                    @debug "skipping $(file.name), already downloaded" _module=nothing _file=nothing _line=nothing
+                    @debug "skipping $(file.name), already downloaded"
                 end
                 counter.skipped += 1
                 flush(logio)
@@ -374,7 +367,7 @@ function sync!(
             lock(thread) do
                 #* Log download errors
                 Logging.with_logger(logger) do
-                    @error "failed to download $(file.name)" error _module=nothing _file=nothing _line=nothing
+                    @error "failed to download $(file.name)" error
                 end
             end
         end
@@ -382,8 +375,7 @@ function sync!(
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
             Logging.with_logger(logger) do
-                @warn("download failed for $(file.name); attempting a second download",
-                    _module=nothing, _file=nothing, _line=nothing)
+                @warn "download failed for $(file.name); attempting a second download"
             end
             icare = icare_connect(icare.username, icare.password, inventory["metadata"]["remote"]["root"],
                 inventory["metadata"]["remote"]["product"], logger)
@@ -397,14 +389,14 @@ function sync!(
                     #* Log second download attempt errors
                     Logging.with_logger(logger) do
                         @error("second download attempt failed for $(file.name); no further attempts",
-                            error, _module=nothing, _file=nothing, _line=nothing)
+                            error)
                     end
                 end
                 lock(thread) do
                     counter.failed += 1
                 end
                 throw(@error("Second download attempt failed for $(file.name); no further attempts",
-                    error, _module=nothing, _file=nothing, _line=nothing))
+                    error))
             end
         end
         #* Clean-up
@@ -417,8 +409,7 @@ function sync!(
                 lock(thread) do
                     counter.conversions += 1
                     Logging.with_logger(logger) do
-                        @debug("$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1",
-                            _module=nothing, _file=nothing, _line=nothing)
+                        @debug "$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1"
                     end
                 end
             else
@@ -429,7 +420,7 @@ function sync!(
                         fsize = inventory["dates"][file.date][file.name]["size"]
                         msg = @sprintf("%s: downloaded %0.2f MB in %s with %0.2f MB/s @%s", file.name,
                             fsize / 1e6, Dates.canonicalize(t1 - t0), fsize / (t1 - t0).value / 1e3, t1)
-                        @debug msg _module=nothing _file=nothing _line=nothing
+                        @debug msg
                     end
                 end
             end
@@ -520,7 +511,7 @@ function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple
     # Set log level
     level = try getproperty(Logging, loglevel)
     catch
-        @warn "unknown log level $loglevel; using Debug as default" _module=nothing _file=nothing _line=nothing
+        @warn "unknown log level $loglevel; using Debug as default"
         loglevel = :Debug
     end
     # Define log file with timestamp

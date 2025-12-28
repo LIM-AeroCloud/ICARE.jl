@@ -423,7 +423,7 @@ function update_stats!(
         end
         if !isempty(obsolete)
             Logging.with_logger(logger) do
-                @warn "deleting obsolete files for $(file.date)" obsolete _module=nothing _file=nothing _line=nothing
+                @warn "deleting obsolete files for $(file.date)" obsolete
                 inventory["metadata"]["database"]["updated"] = Dates.now()
             end
         end
@@ -522,15 +522,15 @@ function combine_gaps(
     # Note: Warnings for dates outside the date range are switched off for this case
     # Log to screen
     Date(0) < daterange.start < database["start"] &&
-        @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
+        @warn "no data available before $(database["start"])"
     Date(9999) > daterange.stop > database["stop"] &&
-        @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
+        @warn "no data available after $(database["stop"])"
     # Log to file
     Logging.with_logger(logger) do
         Date(0) < daterange.start < database["start"] &&
-            @warn "no data available before $(database["start"])" _module=nothing _file=nothing _line=nothing
+            @warn "no data available before $(database["start"])"
         Date(9999) > daterange.stop > database["stop"] &&
-            @warn "no data available after $(database["stop"])" _module=nothing _file=nothing _line=nothing
+            @warn "no data available after $(database["stop"])"
         length(gaps) > 0 && @info "there are data gaps in the current date range" gaps
     end
     return gaps
@@ -680,8 +680,7 @@ function check_localroot!(
     if root ≠ origin
         origin = joinpath(origin, product)
         update = joinpath(root, product)
-        @warn("product folder was recently moved; updating inventory", origin, update,
-            _module=nothing, _file=nothing, _line=nothing)
+        @warn "product folder was recently moved; updating inventory" origin update
         inventory["metadata"]["local"]["root"] = root
         inventory["metadata"]["local"]["path"] = update
         inventory["metadata"]["database"]["updated"] = Dates.now()

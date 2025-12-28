@@ -1,7 +1,7 @@
 # Parse command line argument for bump type (default: minor)
 bump_type = length(ARGS) > 0 ? lowercase(ARGS[1]) : "minor"
 if !(bump_type in ["minor", "major"])
-    @error "BUMP_TYPE must be 'minor' or 'major', got: $bump_type" _module=nothing _file=nothing _line=nothing
+    @error "BUMP_TYPE must be 'minor' or 'major', got: $bump_type"
     exit(1)
 end
 
