@@ -15,6 +15,11 @@ be loaded on its own with [`load_inventory`](@ref). For many functions, convenie
 that load the inventory from the hidden `.inventory.yaml` in the product folder and more
 performant methods exist using the preloaded inventory, skipping the load step.
 
+!!! warning "Important notice"
+    There is no public function to save the inventory. This is done automatically every time
+    the inventory is updated by any _ICARE_ function. Users should not have to save the inventory
+    manually and should not attempt to do so as a wrong format might lead to unintended errors.
+
 ```@docs
 load_inventory
 list_inventory

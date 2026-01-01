@@ -2,19 +2,22 @@
 ## API functions
 
 """
-    load_inventory(path::AbstractString) -> SortedDict
+    load_inventory(path::AbstractString, logger::Union{Nothing,logex.AbstractLogger}=nothing) -> SortedDict
 
 Load the database inventory from the `path` to the product folder (and a hidden yaml file)
 to a `SortedDict`, which can be processed by other ICARE functions.
 
+If a `logger` is provided, events are logged to it in addition to the global logger
+(typically the console).
+
 See also: [`list_inventory`](@ref)
 """
-function load_inventory(path::AbstractString)::SortedDict
+function load_inventory(path::AbstractString, logger::Union{Nothing,logex.AbstractLogger}=nothing)::SortedDict
     inventory = SortedDict{String,Any}()
     file = joinpath(path, ".inventory.yaml")
     isfile(file) || throw(ArgumentError(string("no inventory found in '$path', ",
         "check that the path to the product folder exists and that the inventory has been created")))
-    load_inventory!(inventory, file)
+    load_inventory!(inventory, file, logger)
 end
 
 
@@ -29,7 +32,7 @@ end
         daterange::@NamedTuple{start::Date,stop::Date},
         convert::Bool,
         resync::Bool,
-        logger::Logging.AbstractLogger
+        logger::NamedTuple{(:file, :tee)}
     )
 
 Initiate the inventory of `icare` server-side data files for the `product` in the `remoteroot`
@@ -40,6 +43,7 @@ The whole inventory can be updated by setting `resync` to `true`.
 Additional checks are performed, whether the `root` folder was moved. In that case, the
 inventory is updated and a warning is issued.
 The target file extension for converted files is set based on the `convert` option.
+The `logger` parameter should be a NamedTuple with `file` and `tee` logger fields.
 Updates are logged to the screen and the log file with `logger`.
 """
 function product_database!(
@@ -50,34 +54,42 @@ function product_database!(
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
     resync::Bool,
-    logger::Logging.AbstractLogger
+    logger::NamedTuple{(:file, :tee)}
 )::Nothing
     # Defining inventory source file and available years on server
     database = joinpath(root, product, ".inventory.yaml")
     years = parse.(Int, readdir(icare))
     if isfile(database)
         # Read available inventory
-        load_inventory!(inventory, database)
-        check_localroot!(inventory, root, product)
+        load_inventory!(inventory, database, logger.file)
+        check_localroot!(inventory, root, product, logger.tee)
         # Update years of interest based on inventory and update options
-        filter_years!(inventory, years, daterange, resync, logger)
+        filter_years!(inventory, years, daterange, resync, logger.tee)
     else
         # Init empty inventory, if yaml is missing
-        new_inventory!(icare, inventory, root, product, logger)
+        new_inventory!(icare, inventory, root, product, logger.tee)
     end
-    sync_database!(icare, inventory, years, daterange, convert, resync, logger)
+    sync_database!(icare, inventory, years, daterange, convert, resync, logger.tee)
 end
 
 
 """
-    load_inventory!(inventory::SortedDict, file::AbstractString) -> SortedDict
+    load_inventory!(
+        inventory::SortedDict,
+        file::AbstractString,
+        logger::Union{Nothing,logex.AbstractLogger}=nothing
+    ) -> SortedDict
 
 Load data from a yaml `file` to the `inventory`.
+If a `logger` is provided, events are logged to it in addition to the global logger.
 The function returns an additional reference to the modified `inventory`.
 """
-function load_inventory!(inventory::SortedDict, file::AbstractString)::SortedDict
+function load_inventory!(
+    inventory::SortedDict,
+    file::AbstractString,
+    logger::Union{Nothing,logex.AbstractLogger}=nothing
+)::SortedDict
     # Load inventory with sorted entries
-    @info "loading local inventory"
     for (key, value) in YAML.load_file(file, dicttype=SortedDict)
         inventory[key] = value
     end
@@ -107,6 +119,11 @@ function load_inventory!(inventory::SortedDict, file::AbstractString)::SortedDic
     )
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
+    # Logg success and return inventory
+    @info "inventory loaded"
+    isnothing(logger) || logex.with_logger(logger) do
+        @info "inventory loaded from '$file'"
+    end
     return inventory
 end
 
@@ -118,7 +135,7 @@ end
         root::String,
         product::String,
         convert::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Initialise a new and empty inventory.
@@ -128,11 +145,10 @@ function new_inventory!(
     inventory::SortedDict,
     root::String,
     product::String,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
-    @info "initialising new inventory"
-    Logging.with_logger(logger) do
-        @info "initialising new, empty inventory"
+    logex.with_logger(logger) do
+        @info "initialising new inventory"
     end
     inventory["dates"] = SortedDict{Date,SortedDict}()
     inventory["gaps"] = Vector{Date}()
@@ -176,7 +192,7 @@ end
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
         resync::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Filter `years` to keep only years within the `daterange` and outside the known date range of
@@ -188,11 +204,11 @@ function filter_years!(
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
     resync::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     if !resync
         # Default option: update outside known date range
-        Logging.with_logger(logger) do
+        logex.with_logger(logger) do
             @info "checking for new data not yet considered in the inventory"
         end
         # ℹ border years are only considered, if the new date is outside the known date range
@@ -202,7 +218,7 @@ function filter_years!(
         gt = daterange.stop ≤ stop || Dates.dayofyear(stop) == Dates.daysinyear(stop) ? (>) : (≥)
         filter!(t -> lt(t, Dates.year(start)) || gt(t, Dates.year(stop)), years)
     else # force update
-        Logging.with_logger(logger) do
+        logex.with_logger(logger) do
             @info "checking inventory dates for updates"
         end
         clear_dates!(inventory)
@@ -231,7 +247,7 @@ end
         daterange::@NamedTuple{start::Date,stop::Date},
         resync::Bool,
         convert::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Sync the `inventory` with the `icare` server for the given `daterange` and `years`.
@@ -245,7 +261,7 @@ function sync_database!(
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
     resync::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     # Monitor updates
     updated = false
@@ -288,10 +304,8 @@ function sync_database!(
     # Save data gaps to inventory
     data_gaps!(inventory)
     gaps = combine_gaps(inventory, daterange, logger)
-    isempty(gaps) || @info "there are data gaps in the current date range (see log file for details)" gaps
 
-
-    updated && Logging.with_logger(logger) do
+    updated && logex.with_logger(logger) do
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
@@ -394,7 +408,7 @@ end
         inventory::SortedDict,
         file::File,
         resync::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Update the `file` stats in the `inventory` with the remote `icare` server.
@@ -408,7 +422,7 @@ function update_stats!(
     inventory::SortedDict,
     file::File,
     resync::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     # Skip, if already updated at the beginning
     resync && return
@@ -422,8 +436,8 @@ function update_stats!(
             delete!(inventory["dates"][file.date], obsolete_file)
         end
         if !isempty(obsolete)
-            Logging.with_logger(logger) do
-                @warn "deleting obsolete files for $(file.date)" obsolete
+            logex.with_logger(logger) do
+                @warn "deleting obsolete files for $(file.date) in inventory" obsolete
                 inventory["metadata"]["database"]["updated"] = Dates.now()
             end
         end
@@ -456,7 +470,7 @@ function update_stats!(
         end
     end
     updated && lock(thread) do
-        Logging.with_logger(logger) do
+        logex.with_logger(logger) do
             @info "updated file stats for $(file.date)"
             inventory["metadata"]["database"]["updated"] = Dates.now()
         end
@@ -486,7 +500,7 @@ end
     combine_gaps(
         inventory::SortedDict,
         daterange::@NamedTuple{start::Date,stop::Date},
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     ) -> Vector{String}
 
 Combine data gaps with single dates in the `inventory` in the given `daterange` to date ranges
@@ -496,7 +510,7 @@ to `logger`.
 function combine_gaps(
     inventory::SortedDict,
     daterange::@NamedTuple{start::Date,stop::Date},
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Vector{String}
     #* Get gaps in current date range
     database = inventory["metadata"]["database"]
@@ -520,13 +534,8 @@ function combine_gaps(
     #* Log missing data
     # Note: The whole date range can be selected by choosing start date 0 and stop date 9999
     # Note: Warnings for dates outside the date range are switched off for this case
-    # Log to screen
-    Date(0) < daterange.start < database["start"] &&
-        @warn "no data available before $(database["start"])"
-    Date(9999) > daterange.stop > database["stop"] &&
-        @warn "no data available after $(database["stop"])"
-    # Log to file
-    Logging.with_logger(logger) do
+    # Log out-of-range warnings
+    logex.with_logger(logger) do
         Date(0) < daterange.start < database["start"] &&
             @warn "no data available before $(database["start"])"
         Date(9999) > daterange.stop > database["stop"] &&
@@ -563,11 +572,12 @@ end
 
 
 """
-    save_inventory(inventory::SortedDict, t::DateTime)
+    save_inventory(inventory::SortedDict, logger::logex.AbstractLogger, t::DateTime)::Nothing
 
 Save the `inventory` to `<product path>/.inventory.yaml` if changes occurred since time `t`.
+Log success to `logger`.
 """
-function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
+function save_inventory(inventory::SortedDict, logger::logex.AbstractLogger, t::DateTime)::Nothing
     # Return, if no changes occured since time `t`
     inventory["metadata"]["database"]["updated"] > t || return
     # Update statistics
@@ -583,7 +593,9 @@ function save_inventory(inventory::SortedDict, t::DateTime)::Nothing
     # Save inventory to file
     file = joinpath(inventory["metadata"]["local"]["path"], ".inventory.yaml")
     YAML.write_file(file, inventory)
-    @info "saved inventory to '$file'"
+    logex.with_logger(logger) do
+        @info "inventory saved to '$file'"
+    end
 end
 
 
@@ -662,16 +674,18 @@ end
     check_localroot!(
         inventory::SortedDict,
         root::AbstractString,
-        product::AbstractString
+        product::AbstractString,
+        logger::logex.AbstractLogger
     )
 
 Check, if the `root` has changed and update the root path and the path to the
-`product` main folder in the `inventory`.
+`product` main folder in the `inventory`. Log changes to `logger`.
 """
 function check_localroot!(
     inventory::SortedDict,
     root::AbstractString,
-    product::AbstractString
+    product::AbstractString,
+    logger::logex.AbstractLogger
 )::Nothing
     # Define paths and update status
     root = realpath(root)
@@ -680,7 +694,9 @@ function check_localroot!(
     if root ≠ origin
         origin = joinpath(origin, product)
         update = joinpath(root, product)
-        @warn "product folder was recently moved; updating inventory" origin update
+        logex.with_logger(logger) do
+            @warn "product folder was recently moved; updating inventory" origin update
+        end
         inventory["metadata"]["local"]["root"] = root
         inventory["metadata"]["local"]["path"] = update
         inventory["metadata"]["database"]["updated"] = Dates.now()

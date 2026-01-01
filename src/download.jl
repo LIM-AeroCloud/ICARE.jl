@@ -95,71 +95,67 @@ function sftp_download(
     # Enforce database update, if file update is selected
     resync |= update
     #* Start logging
-    logfile, level = init_logging(logfile, productpath, loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        Logging.with_logger(logger) do
-            range = daterange.start == daterange.stop ? daterange.start :
-                string(daterange.start, " – ", daterange.stop)
-            @info "downloading '$product' data to '$(realpath(localroot))' for $range"
-            @debug("parameters", product=prod, version=version, startdate=start, enddate=stop,
-                remoteroot=remoteroot, localroot=localroot, convert=convert,
-                resync=resynchronisation, update=update, loglevel=loglevel)
-        end
-        #* Syncing local and remote database
-        # Get connection to server, go to product folder on remote
-        ts = Dates.now()
-        Logging.with_logger(logger) do
-            @info "initialising database @$ts"
-        end
-        icare = icare_connect(user, password, remoteroot, product, logger)
-        # ℹ Make inventory available for catch block
-        inventory = SortedDict()
+    logger = init_logging(logfile, productpath, loglevel)
+    logex.with_logger(logger.file) do
+        range = daterange.start == daterange.stop ? daterange.start :
+            string(daterange.start, " – ", daterange.stop)
+        @info "downloading '$product' data to '$(realpath(localroot))' for $range"
+        @debug("parameters", product=prod, version=version, startdate=start, enddate=stop,
+            remoteroot=remoteroot, localroot=localroot, convert=convert,
+            resync=resynchronisation, update=update, loglevel=loglevel)
+    end
+    #* Syncing local and remote database
+    # Get connection to server, go to product folder on remote
+    ts = Dates.now()
+    logex.with_logger(logger.file) do
+        @info "initialising database @$ts"
+    end
+    icare = icare_connect(user, password, remoteroot, product, logger.tee)
+    # ℹ Make inventory available for catch block
+    inventory = SortedDict()
         # Get available server dates
         try
             product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
-            Logging.with_logger(logger) do
+            logex.with_logger(logger.file) do
                 te = Dates.now()
                 @info "setup of database completed in $(Dates.canonicalize(te - ts))) @$te"
             end
         catch error
-            Logging.with_logger(logger) do
-                @error "failed to load local inventory" error
+            logex.with_logger(logger.tee) do
+                @error "failed to load local inventory" exception=(error, catch_backtrace())
             end
             data_gaps!(inventory)
-            save_inventory(inventory, ts)
-            @error "failed to load local inventory"
             return inventory
-        end
-        # Log download session
-        t0 = Dates.now()
-        @info("starting up to $(Threads.nthreads()) parallel downloads\n"*
-            "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
-        Logging.with_logger(logger) do
-            @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
-            flush(logio)
-        end
-
-        ## Download
-        #* Download missing data from server
-        counter = Counter()
-        # Match folder structure with server
-        try sync!(icare, inventory, daterange, convert, update, resync, logger, logio, counter)
-        catch error
-            Logging.with_logger(logger) do
-                @error "failed to sync with ICARE server" error
-            end
-            @error "failed to sync with ICARE server"
         finally
-            #* Log end of download session and save inventory
-            save_inventory(inventory, ts)
-            log_counter(counter, logger, logio, t0)
-            @info "download session closed"
-            # Return inventory for further investigation after download
-            return inventory
+            # Ensure that inventory is saved even in case of errors
+            save_inventory(inventory, logger.tee, ts)
         end
-    end #logging to file
+    # Log download session
+    t0 = Dates.now()
+    @info("starting up to $(Threads.nthreads()) parallel downloads\n"*
+        "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
+    logex.with_logger(logger.file) do
+        @info "starting up to $(Threads.nthreads()) parallel downloads @$(t0)"
+    end
+
+    ## Download
+    #* Download missing data from server
+    counter = Counter()
+    # Match folder structure with server
+    try
+        sync!(icare, inventory, daterange, convert, update, resync, logger, counter)
+    catch error
+        logex.with_logger(logger.tee) do
+            @error "failed to sync with ICARE server" exception=(error, catch_backtrace())
+        end
+    finally
+        #* Log end of download session and save inventory
+        save_inventory(inventory, logger.tee, ts)
+        log_counter(counter, logger.tee, t0)
+        @info "download session closed, see log file for details"
+        # Return inventory for further investigation after download
+        return inventory
+    end
 end #function ftp_download
 
 
@@ -171,7 +167,7 @@ end #function ftp_download
         password::String,
         root::String,
         product::String,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     ) -> SFTP.Client
 
 Securely connect to the server with SFTP using the credentials `user` and `password`
@@ -186,7 +182,7 @@ function icare_connect(
     password::String,
     root::String,
     product::String,
-    logger::Logging.AbstractLogger,
+    logger::logex.AbstractLogger,
     __counter__::Int=0
 )::SFTP.Client
     # Connect to server and go to root of selected data
@@ -196,31 +192,32 @@ function icare_connect(
     catch error
         if error isa RequestError && error.code == 6
             if __counter__ == 5
-                Logging.with_logger(logger) do
+                logex.with_logger(logger) do
                     @error "failed to connect to ICARE server; abort downloads"
                 end
                 throw(ConnectionError("failed to connect to ICARE server 5 times"))
             else
                 __counter__ += 1
-                @warn "failed to connect to server; attempting again in $wait seconds"
+                logex.with_logger(logger) do
+                    @warn "failed to connect to ICARE server; attempting again in $wait seconds"
+                end
                 # Wait a minute, then reconnect
                 sleep(wait)
                 icare_connect(user, password, root, product, logger, __counter__)
                 cd(icare, root) # ℹ Needed so that the icare uses the root path after recursive calls
             end
         elseif error isa RequestError && error.code == 9
-            Logging.with_logger(logger) do
-                @warn "remote root not verified"
+            logex.with_logger(logger) do
+                @warn "unable to verify remote root due to restricted access of parent folder"
             end
-            @warn "unable to verify remote root due to restricted access of parent folder"
             icare.uri = SFTP.URI(icare.uri, path=root)
         elseif error isa RequestError && error.code == 67
-            Logging.with_logger(logger) do
+            logex.with_logger(logger) do
                 @error "unable to connect to server; check user credentials"
             end
             throw(Base.IOError("could not connect to ICARE server; check user name and password", Integer(SFTP.EC_DIR_NOT_FOUND)))
         else
-            Logging.with_logger(logger) do
+            logex.with_logger(logger) do
                 @error "unknown connection error when trying to connect to ICARE server" error
             end
             rethrow(error)
@@ -301,16 +298,14 @@ end
         convert::Bool,
         update::Bool,
         resync::Bool,
-        logger::Logging.AbstractLogger,
-        logio::IO,
+        logger::NamedTuple{(:file, :tee)},
         counter::Counter
     )
 
 Synchronize the files for the selected `daterange` from the `icare` server with the local system.
 If set, `update` and `convert` files to the latest version available on the server and a predefined
 file format. Dates and files are compared to the `inventory` and the `inventory` is updated, if necessary.
-Increase the respective counter for each sync action and log `logger` events to a log file
-in the `logio` I/O stream.
+Increase the respective counter for each sync action and log events to `logger`.
 """
 function sync!(
     icare::SFTP.Client,
@@ -319,8 +314,7 @@ function sync!(
     convert::Bool,
     update::Bool,
     resync::Bool,
-    logger::Logging.AbstractLogger,
-    logio::IO,
+    logger::NamedTuple{(:file, :tee)},
     counter::Counter
 )::Nothing
     #* Define all files for download
@@ -329,16 +323,13 @@ function sync!(
         for date in dates]...)
     # Log planned downloads
     stats =inventory_stats(inventory, dates)
-    @info("$(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"]) files "*
-        "($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"]))) "*
-        "planned for download, $(stats["downloaded files"]) files "*
-        "($(display_size(stats["downloaded size"]))) already downloaded")
-    Logging.with_logger(logger) do
-        @info("files planned for download: $(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"])"*
-            " ($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"])))")
+    logex.with_logger(logger.tee) do
+        @info("$(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"]) files "*
+            "($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"]))) "*
+            "planned for download, $(stats["downloaded files"]) files "*
+            "($(display_size(stats["downloaded size"]))) already downloaded")
         not = resync ? "" : " not"
         @info "files will$not be updated, if newer files are available on the server"
-        flush(logio)
     end
 
     prog = pm.Progress(length(files), desc="downloading...")
@@ -347,11 +338,10 @@ function sync!(
         if downloaded(inventory, file, update)
             lock(thread) do
                 #* Log skipped files
-                Logging.with_logger(logger) do
+                logex.with_logger(logger.file) do
                     @debug "skipping $(file.name), already downloaded"
                 end
                 counter.skipped += 1
-                flush(logio)
             end
             pm.next!(prog)
             continue
@@ -362,32 +352,32 @@ function sync!(
         #* Download file and optionally convert to another format
         try
             download(icare, inventory, file, update)
-            _convert!(inventory, file, convert, logger)
+            _convert!(inventory, file, convert, logger.tee)
         catch error
             lock(thread) do
                 #* Log download errors
-                Logging.with_logger(logger) do
-                    @error "failed to download $(file.name)" error
+                logex.with_logger(logger.file) do
+                    @error "failed to download $(file.name)" exception = (error, catch_backtrace())
                 end
             end
         end
         #* Error handling/Re-download, if unsuccessful
         if !downloaded(inventory, file, update)
             # Check connection to ICARE server
-            Logging.with_logger(logger) do
+            logex.with_logger(logger.file) do
                 @warn "download failed for $(file.name); attempting a second download"
             end
             icare = icare_connect(icare.username, icare.password, inventory["metadata"]["remote"]["root"],
-                inventory["metadata"]["remote"]["product"], logger)
+                inventory["metadata"]["remote"]["product"], logger.tee)
             # Check for correct server-side file stats
-            update_stats!(icare, inventory, file, resync, logger)
+            update_stats!(icare, inventory, file, resync, logger.file)
             try
                 download(icare, inventory, file, update)
-                _convert!(inventory, file, convert, logger)
+                _convert!(inventory, file, convert, logger.tee)
             catch error
                 lock(thread) do
                     #* Log second download attempt errors
-                    Logging.with_logger(logger) do
+                    logex.with_logger(logger.tee) do
                         @error("second download attempt failed for $(file.name); no further attempts",
                             error)
                     end
@@ -395,8 +385,6 @@ function sync!(
                 lock(thread) do
                     counter.failed += 1
                 end
-                throw(@error("Second download attempt failed for $(file.name); no further attempts",
-                    error))
             end
         end
         #* Clean-up
@@ -408,7 +396,7 @@ function sync!(
             if orig
                 lock(thread) do
                     counter.conversions += 1
-                    Logging.with_logger(logger) do
+                    logex.with_logger(logger.file) do
                         @debug "$(file.name) already downloaded; converted in $(Dates.canonicalize(t1 - t0)) @$t1"
                     end
                 end
@@ -416,7 +404,7 @@ function sync!(
                 lock(thread) do
                     # Log successful downloads
                     counter.downloads += 1
-                    Logging.with_logger(logger) do
+                    logex.with_logger(logger.file) do
                         fsize = inventory["dates"][file.date][file.name]["size"]
                         msg = @sprintf("%s: downloaded %0.2f MB in %s with %0.2f MB/s @%s", file.name,
                             fsize / 1e6, Dates.canonicalize(t1 - t0), fsize / (t1 - t0).value / 1e3, t1)
@@ -425,7 +413,6 @@ function sync!(
                 end
             end
         end
-        flush(logio)
         pm.next!(prog) # Update progress meter
     end # loop over files
     pm.finish!(prog)
@@ -496,58 +483,4 @@ function downloaded(
     (update && (Date∘Dates.unix2datetime)(localstats.mtime) < filestats["mtime"]) && return false
     # Return true, if all checks passed
     return true
-end
-
-
-## Functions for logging
-
-"""
-    init_logging(logfile::String, rootdir::String, loglevel::Symbol) -> Tuple{String,Logging.LogLevel}
-
-Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
-`rootdir`. Return the updated logfile and the `loglevel` as `Logging.LogLevel`.
-"""
-function init_logging(logfile::String, rootdir::String, loglevel::Symbol)::Tuple{String,Logging.LogLevel}
-    # Set log level
-    level = try getproperty(Logging, loglevel)
-    catch
-        @warn "unknown log level $loglevel; using Debug as default"
-        loglevel = :Debug
-    end
-    # Define log file with timestamp
-    contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
-    logfile, logext = splitext(logfile)
-    logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
-    logfile = expanduser(logfile)
-    return logfile, level
-end
-
-
-"""
-    log_counter(counter::Counter, logger::Logging.AbstractLogger, t0::DateTime)
-
-Log the number of downloaded, skipped, and converted files saved in `counter` to `logger`
-together with the time it took since `t0`.
-"""
-function log_counter(counter::Counter, logger::Logging.AbstractLogger, logio::IO, t0::DateTime)::Nothing
-    t1 = Dates.now()
-    Logging.with_logger(logger) do
-        if counter.downloads > 0
-            s = counter.downloads == 1 ? "" : "s"
-            @info "$(counter.downloads) file$s downloaded in $(Dates.canonicalize(t1-t0)) @$(t1)"
-        end
-        if counter.conversions > 0
-            s = counter.conversions == 1 ? " was" : "s were"
-            @info "$(counter.conversions) file$s already downloaded and converted to a new file format"
-        end
-        if counter.skipped > 0
-            s = counter.skipped == 1 ? " was" : "s were"
-            @info "$(counter.skipped) file$s already previously downloaded"
-        end
-        if counter.failed > 0
-            s = counter.failed == 1 ? "" : "s"
-            @info "$(counter.failed) file$s failed to download"
-        end
-        flush(logio)
-    end
 end

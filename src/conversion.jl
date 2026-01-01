@@ -58,20 +58,17 @@ function convert!(
 )::SortedDict
     # Start
     t0 = Dates.now()
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        # Rearrange inventory for better processing
-        @info "analyse inventory and local database"
-        database = inventory_dates(inventory, none)
-        # Scan inventory for additional files and folders
-        root = inventory["metadata"]["local"]["path"]
-        db = localscan(database, root, intersect)
-        # Clean up local database and save inventory
-        conversion(inventory, db.files, sizecheck, logger)
-        save_inventory(inventory, t0)
-    end
+    # Rearrange inventory for better processing
+    @info "analyse inventory and local database"
+    database = inventory_dates(inventory, none)
+    # Scan inventory for additional files and folders
+    root = inventory["metadata"]["local"]["path"]
+    db = localscan(database, root, intersect)
+    # Clean up local database and save inventory
+    conversion(inventory, db.files, sizecheck, logger.file)
+    save_inventory(inventory, logger.tee, t0)
     return inventory
 end
 
@@ -86,7 +83,7 @@ end
         inventory::SortedDict,
         file::File,
         convert::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Convert the `file` to a new file format as defined in the `inventory` unless `file` is already
@@ -96,7 +93,7 @@ function _convert!(
     inventory::SortedDict,
     file::File,
     convert::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     converted!(inventory, file, convert) && return
     rm(file.location.target, force=true)
@@ -136,7 +133,7 @@ end
         inventory::SortedDict,
         file::File,
         convert::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Set the size of the converted `file` in the `inventory` and mark the `inventory` as updated.
@@ -146,7 +143,7 @@ function set_converted_size!(
     inventory::SortedDict,
     file::File,
     convert::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     # Initial checks
     convert || return
@@ -158,7 +155,7 @@ function set_converted_size!(
     if !isfile(file.location.target)
         lock(thread) do
             # Log error, if converted file does not exist
-            Logging.with_logger(logger) do
+            logex.with_logger(logger) do
                 @error "cannot determine size of '$(file.location.target)'"
             end
         end
@@ -180,7 +177,7 @@ end
         inventory::SortedDict,
         files::Set{String},
         sizecheck::Bool,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Convert all `files` part of the `inventory` to a new format as defined in the `inventory`.
@@ -191,7 +188,7 @@ function conversion(
     inventory::SortedDict,
     files::Set{String},
     sizecheck::Bool,
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Nothing
     # Remove .inventory.yaml from files to convert
     ext = inventory["metadata"]["file"]["ext"]
@@ -203,14 +200,14 @@ function conversion(
     end
     input = File.(Ref(inventory), input)
     t0 = Dates.now()
-    Logging.with_logger(logger) do
+    logex.with_logger(logger) do
         @info "starting up to $(Threads.nthreads()) parallel conversions of $(length(input)) files @$t0"
     end
     prog = pm.Progress(length(input), desc="converting...")
     @threads for file in input
         lock(thread) do
             # Log converted files
-            Logging.with_logger(logger) do
+            logex.with_logger(logger) do
                 @debug "convert '$(file.name)'"
             end
         end
@@ -219,7 +216,7 @@ function conversion(
     end
     pm.finish!(prog)
     t = Dates.now()
-    Logging.with_logger(logger) do
+    logex.with_logger(logger) do
         @info "finished conversion @$t in $(Dates.canonicalize(t-t0))"
     end
     return

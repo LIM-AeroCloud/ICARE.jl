@@ -14,42 +14,30 @@ import ProgressMeter as pm
 import Dates
 import Dates: Date, DateTime
 import YAML
-import Logging
+import LoggingExtras as logex
 import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
 import Base.Threads: @threads
 
+# global constants
+const Debug = Base.CoreLogging.Debug
+const Info = Base.CoreLogging.Info
+const Warn = Base.CoreLogging.Warn
+const Error = Base.CoreLogging.Error
+
 # global thread lock
 const thread = ReentrantLock()
 
-# Custom logging macros with source info suppression
-macro debug(msg, args...)
-    return esc(quote
-        Logging.@logmsg Logging.Debug $msg $(args...) _module=nothing _file=nothing _line=nothing
-    end)
-end
-
-macro warn(msg, args...)
-    return esc(quote
-        Logging.@logmsg Logging.Warn $msg $(args...) _module=nothing _file=nothing _line=nothing
-    end)
-end
-
-macro error(msg, args...)
-    return esc(quote
-        Logging.@logmsg Logging.Error $msg $(args...) _module=nothing _file=nothing _line=nothing
-    end)
-end
-
 # Export functions and types
 export sftp_download, convert!, clean!, list_inventory, load_inventory, ignore!, unignore!,
-    attach!, detach!, Extension, original, converted
+    attach!, detach!, PrettyFileLogger, Extension, original, converted
 @static if VERSION ≥ v"1.11"
     eval(Meta.parse("public convert"))
 end
 
 # Include source files
 include("types.jl") # types and exceptions
+include("logging.jl") # routines related to logging
 include("inventory.jl") # routines related to the local inventory
 include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion

@@ -5,6 +5,13 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ## [UNRELEASED]
 
+### Added
+
+- New logger `PrettyFileLogger` based on `FileLogger` from 
+  [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
+  wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35])
+  - the new logger supperes module, file, and line information end expands the display of arrays
+
 ### Changed
 
 - Improved Logging for `sftp_download` ([#35])
