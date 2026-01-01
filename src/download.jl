@@ -125,6 +125,7 @@ function sftp_download(
                 @error "failed to load local inventory" exception=(error, catch_backtrace())
             end
             data_gaps!(inventory)
+            close(logger.file.logger.stream)
             return inventory
         finally
             # Ensure that inventory is saved even in case of errors
@@ -152,6 +153,7 @@ function sftp_download(
         #* Log end of download session and save inventory
         save_inventory(inventory, logger.tee, ts)
         log_counter(counter, logger.tee, t0)
+        close(logger.file.logger.stream)
         @info "download session closed, see log file for details"
         # Return inventory for further investigation after download
         return inventory
@@ -318,9 +320,19 @@ function sync!(
     counter::Counter
 )::Nothing
     #* Define all files for download
-    dates = dates = filter(!in(inventory["gaps"]), daterange.start:daterange.stop)
+    dates = filter(d -> d ∉ inventory["gaps"] &&
+        inventory["metadata"]["database"]["start"] ≤ d ≤ inventory["metadata"]["database"]["stop"],
+        daterange.start:daterange.stop
+    )
     files = vcat([File.(Ref(icare), Ref(inventory), date, collect(String, keys(inventory["dates"][date])), convert)
         for date in dates]...)
+    # Exit prematurely for no downloads in selected range
+    if isempty(files)
+        logex.with_logger(logger.tee) do
+            @warn "no data available for download in selected date range" daterange
+        end
+        return
+    end
     # Log planned downloads
     stats =inventory_stats(inventory, dates)
     logex.with_logger(logger.tee) do
