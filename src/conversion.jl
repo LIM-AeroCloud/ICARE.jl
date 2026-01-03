@@ -3,45 +3,44 @@
 ## API functions
 
 """
-    convert(
+    convert_inventory(
         root::AbstractString=".";
         sizecheck::Bool=false,
-        logfile::String = "conversions.log",
+        logfile::AbstractString = "conversions.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
-Convert all files in `root` and part of the inventory to a new format as defined in the inventory.
+Convert all files in `root` that are part of the inventory to a new format as defined in the inventory.
 If files of the new format already exist, they are skipped unless `sizecheck` is set to `true`,
 which will reconvert any file whose size differs from that listed in the inventory.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
 
-See also: [`convert!`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+See also: [`convert_inventory!`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
-function Base.convert(
-    root::AbstractString=".";
+function convert_inventory(
+    root::String=".";
     sizecheck::Bool=false,
     logfile::String = "conversions.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
-    path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict()
-    load_inventory!(inventory, path)
+    logger = init_logging(logfile, root, loglevel)
+    inventory = load_inventory(root, logger.tee)
     # Call the conversion method for the inventory
-    convert!(inventory; sizecheck, logfile, loglevel)
+    _convert!(inventory, sizecheck, logger)
 end
 
 
 """
-    convert!(
-        inventory::SortedDict;
-        sizecheck::Bool=false,
-        logfile::String = "conversions.log",
+    convert_inventory!(
+        inventory::SortedDict,
+        sizecheck::Bool,
+        logfile::AbstractString = "conversions.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
-Convert all files in the local database and part of the `inventory` to a new format as defined
+Convert all files in the local database that are part of the `inventory` to a new format as defined
 in the `inventory`. If files of the new format already exist, they are skipped unless `sizecheck`
 is set to `true`, which will reconvert any file whose size differs from that listed in the
 `inventory`.
@@ -50,16 +49,37 @@ file name to avoid overwriting existing logs. The function returns the updated `
 
 See also: [`convert`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
-function convert!(
+function convert_inventory!(
     inventory::SortedDict;
     sizecheck::Bool=false,
-    logfile::String = "conversions.log",
+    logfile::AbstractString = "conversions.log",
     loglevel::Symbol = :Debug
+)::SortedDict
+    logger = init_logging(String(logfile), inventory["metadata"]["local"]["path"], loglevel)
+    _convert!(inventory, sizecheck, logger)
+end
+
+
+## Helper functions for file conversions of inventory data
+
+#* Helper function for batch conversions without download
+
+"""
+    _convert!(
+        inventory::SortedDict,
+        sizecheck::Bool,
+        logger::NamedTuple{(:file,:tee)}
+    ) -> SortedDict
+
+Implementation of file conversions for wrapper functions `convert_inventory` and `convert_inventory!`.
+"""
+function _convert!(
+    inventory::SortedDict,
+    sizecheck::Bool,
+    logger::NamedTuple{(:file,:tee)}
 )::SortedDict
     # Start
     t0 = Dates.now()
-    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
     # Rearrange inventory for better processing
     @info "analyse inventory and local database"
     database = inventory_dates(inventory, none)
@@ -69,14 +89,12 @@ function convert!(
     # Clean up local database and save inventory
     conversion(inventory, db.files, sizecheck, logger.file)
     save_inventory(inventory, logger.tee, t0)
+    @info "conversion session completed"
     return inventory
 end
 
 
-## Helper functions for file conversions of inventory data
-
 #* Functions for conversions during download
-
 
 """
     _convert!(
@@ -194,12 +212,20 @@ function conversion(
     ext = inventory["metadata"]["file"]["ext"]
     newext = inventory["metadata"]["file"]["newext"]
     input = filter(endswith(ext), files)
+    logex.with_logger(logger) do
+        @info "found $(length(input)) files in local database for conversion" files=input
+    end
     if !sizecheck
         input = setdiff(getindex.(splitext.(input), 1),
             getindex.(splitext.(filter(endswith(newext), files)), 1)).*ext
+        logex.with_logger(logger) do
+            @debug "ignoring already converted files without size check, $(length(input)) files to convert" files=input
+        end
     end
     input = File.(Ref(inventory), input)
     t0 = Dates.now()
+    @info("starting up to $(Threads.nthreads()) parallel conversions of $(length(input)) files\n"*
+        "start julia with `julia -t <number>` to change the `<number>` of parallel downloads")
     logex.with_logger(logger) do
         @info "starting up to $(Threads.nthreads()) parallel conversions of $(length(input)) files @$t0"
     end

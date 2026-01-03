@@ -4,18 +4,18 @@
 #* Main function for download from server
 """
     sftp_download(
-        user::String,
-        password::String,
-        product::String,
+        user::AbstractString,
+        password::AbstractString,
+        product::AbstractString,
         startdate::Int,
         enddate::Int=-1;
         version::Union{Nothing,Real} = 4.51,
-        remoteroot::String = "/SPACEBORNE/CALIOP/",
-        localroot::String = ".",
+        remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
+        localroot::AbstractString = ".",
         convert::Bool = true,
         resync::Bool = false,
         update::Bool = false,
-        logfile::String = "downloads.log",
+        logfile::AbstractString = "downloads.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -28,8 +28,8 @@ the inventory of available online data for the given product.
 
 # Positional arguments
 
-- `user::String`/`password::String`: Aeris/ICARE account credentials
-- `product::String`: The desired product to download (matches the folder name
+- `user::AbstractString`/`password::AbstractString`: Aeris/ICARE account credentials
+- `product::AbstractString`: The desired product to download (matches the folder name
   excluding the version number, e.g., `05kmCPro`)
 - `startdate::Int`/`enddate::Int`: The start/end date for the download period as `Int`
   (format: `yyyy[mm[dd]]`);
@@ -40,19 +40,19 @@ date is selected and the latest possible end date, e.g. `202003` will give a sta
 defined by `startdate` is downloaded, either a day, or a month (if the day part is omitted)
 or a year (if both day and month are omitted).
 
-See also: [`list_inventory`](@ref), [`convert!`](@ref), [`convert(::AbstractString)`](@ref),
+See also: [`list_inventory`](@ref), [`convert_inventory!`](@ref), [`convert_inventory`](@ref),
 [`ignore!`](@ref), [`unignore!`](@ref), [`clean!`](@ref)
 
 # Keyword arguments
 
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
-- `remoteroot::String`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
-- `localroot::String`: The root path on the local machine containing the product folder (default: `"."`).
+- `remoteroot::AbstractString`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
+- `localroot::AbstractString`: The root path on the local machine containing the product folder (default: `"."`).
 - `convert::Bool`: Whether or not to convert the downloaded files to another file format (default: `true`).
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`). Converted file sizes will be deleted for any updates.
-- `logfile::String`: The name of the log file (default: `"downloads.log"`; the name will be appended
+- `logfile::AbstractString`: The name of the log file (default: `"downloads.log"`; the name will be appended
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 
@@ -68,6 +68,26 @@ float with two decimal places independent of the input format.
 By default, hdf files (version 4) are assumed as download source, which will be converted to
 `.h5` (HDF5) file unless `convert` is set to `false`.
 """
+function sftp_download(
+    user::AbstractString,
+    password::AbstractString,
+    product::AbstractString,
+    startdate::Int,
+    enddate::Int=-1;
+    version::Union{Nothing,Real} = 4.51,
+    remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
+    localroot::AbstractString = ".",
+    convert::Bool = true,
+    resync::Bool = false,
+    update::Bool = false,
+    logfile::AbstractString = "downloads.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    sftp_download(String(user), String(password), String(product), startdate, enddate;
+        version, remoteroot=String(remoteroot), localroot=String(localroot),
+        convert, resync, update, logfile=String(logfile), loglevel)
+end
+
 function sftp_download(
     user::String,
     password::String,

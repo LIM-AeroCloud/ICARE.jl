@@ -3,7 +3,7 @@
 ## Analysing the inventory
 
 The structure and files including file stats are saved in an inventory that is returned by most
-API functions like [`sftp_download`](@ref), [`clean!`](@ref), [`convert!`](@ref), and [`convert`](@ref).
+API functions like [`sftp_download`](@ref), [`clean!`](@ref), [`convert_inventory!`](@ref), and [`convert_inventory`](@ref).
 The inventory is a `SortedDict` that saves relevant data such as the available data range,
 the file count and the overall size in the metadata. Stats about the data files are kept in the
 `"dates"` section and missing dates are listed in `"gaps"`. Function [`list_inventory`](@ref)
@@ -31,17 +31,17 @@ Several functions exist to help shaping the database to the users need.
 
 ### Batch conversions
 
-Methods [`convert`](@ref)/[`convert!`](@ref) can be used to convert data files to a new file format.
+Methods [`convert_inventory`](@ref)/[`convert_inventory!`](@ref) can be used to convert data files to a new file format.
 By default, HDF4 files are upgraded to HDF5. The same could be achieved by re-running
 [`sftp_download`](@ref) with `convert` option set to `true`. If the original files are already
 downloaded, then [`sftp_download`](@ref) will not re-download these files and just convert them.
-If you have already loaded the inventory, then [`convert!`](@ref) is the more performant option;
-[`convert`](@ref) is a convenience method that will load the inventory first and then call
-[`convert!`](@ref).
+If you have already loaded the inventory, then conversion with [`convert_inventory!`](@ref) is
+the more performant option; [`convert_inventory`](@ref) is a convenience method that will load
+the inventory first and then call [`convert_inventory!`](@ref).
 
 ```@docs
-convert(::String)
-convert!
+convert_inventory
+convert_inventory!
 ```
 
 ### Cleaning up the inventory

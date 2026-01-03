@@ -18,9 +18,23 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ### Changed
 
+- **Breaking:** Refine logging in `load_inventory` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35)). Rather than defining an additional
+  logger with the second optional argument (for additional file logging), `global_logger` is
+  now replaced by the logger in the second optional argument. If you want logging to console
+  and file, use e.g. `TeeLogger` from
+  [LoggingExtras](https://github.com/JuliaLogging/LoggingExtras.jl?tab=readme-ov-file).
+  This allows logging in wrapper functions like `convert_inventory` for `convert_inventory!`.
+- **Breaking:** change function names of `convert`/`convert!` to `convert_inventory[!]` to
+  avoid type piracy ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- All functions now accept `AbstractString` instead of the stricter `String`
 - Improved Logging for `sftp_download` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
 - Don't consider folder sizes for database size, this is too buggy and inaccurate
 - Use thin spaces between size and unit to log to console and file
+
+### Removed
+
+- **Breaking:** Remove functions `convert`/`convert!` in favour of `convert_inventory[!]`
+  to avoid type piracy ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
 
 ## [v0.6.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0) - 2025-12-27
 

@@ -29,11 +29,8 @@ const Error = Base.CoreLogging.Error
 const thread = ReentrantLock()
 
 # Export functions and types
-export sftp_download, convert!, clean!, list_inventory, load_inventory, ignore!, unignore!,
-    attach!, detach!, PrettyFileLogger, Extension, original, converted
-@static if VERSION ≥ v"1.11"
-    eval(Meta.parse("public convert"))
-end
+export sftp_download, convert_inventory, convert_inventory!, clean!, list_inventory, load_inventory,
+    ignore!, unignore!, attach!, detach!, PrettyFileLogger, Extension, original, converted
 
 # Include source files
 include("types.jl") # types and exceptions

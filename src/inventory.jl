@@ -2,7 +2,7 @@
 ## API functions
 
 """
-    load_inventory(path::AbstractString, logger::Union{Nothing,logex.AbstractLogger}=nothing) -> SortedDict
+    load_inventory(path::AbstractString, logger::logex.AbstractLogger=logex.global_logger()) -> SortedDict
 
 Load the database inventory from the `path` to the product folder (and a hidden yaml file)
 to a `SortedDict`, which can be processed by other ICARE functions.
@@ -12,7 +12,7 @@ If a `logger` is provided, events are logged to it in addition to the global log
 
 See also: [`list_inventory`](@ref)
 """
-function load_inventory(path::AbstractString, logger::Union{Nothing,logex.AbstractLogger}=nothing)::SortedDict
+function load_inventory(path::AbstractString, logger::logex.AbstractLogger=logex.global_logger())::SortedDict
     inventory = SortedDict{String,Any}()
     file = joinpath(path, ".inventory.yaml")
     isfile(file) || throw(ArgumentError(string("no inventory found in '$path', ",
@@ -61,7 +61,7 @@ function product_database!(
     years = parse.(Int, readdir(icare))
     if isfile(database)
         # Read available inventory
-        load_inventory!(inventory, database, logger.file)
+        load_inventory!(inventory, database, logger.tee)
         check_localroot!(inventory, root, product, logger.tee)
         # Update years of interest based on inventory and update options
         filter_years!(inventory, years, daterange, resync, logger.tee)
@@ -77,17 +77,17 @@ end
     load_inventory!(
         inventory::SortedDict,
         file::AbstractString,
-        logger::Union{Nothing,logex.AbstractLogger}=nothing
+        logger::logex.AbstractLogger=logex.global_logger()
     ) -> SortedDict
 
 Load data from a yaml `file` to the `inventory`.
-If a `logger` is provided, events are logged to it in addition to the global logger.
+If a `logger` is provided, events are logged to this logger rather than the global logger.
 The function returns an additional reference to the modified `inventory`.
 """
 function load_inventory!(
     inventory::SortedDict,
     file::AbstractString,
-    logger::Union{Nothing,logex.AbstractLogger}=nothing
+    logger::logex.AbstractLogger=logex.global_logger()
 )::SortedDict
     # Load inventory with sorted entries
     for (key, value) in YAML.load_file(file, dicttype=SortedDict)
@@ -120,8 +120,7 @@ function load_inventory!(
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     # Logg success and return inventory
-    @info "inventory loaded"
-    isnothing(logger) || logex.with_logger(logger) do
+    logex.with_logger(logger) do
         @info "inventory loaded from '$file'"
     end
     return inventory

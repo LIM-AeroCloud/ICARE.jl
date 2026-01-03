@@ -4,7 +4,7 @@
 
 
 """
-    init_logging(logfile::String, rootdir::String, loglevel::Symbol)
+    init_logging(logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol)
         -> @NamedTuple{file::logex.AbstractLogger,tee::logex.AbstractLogger}
 
 Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
@@ -12,7 +12,7 @@ Add a timestamp to the `logfile`. If no path is given in the file name, save log
 `file` and `tee`.
 """
 function init_logging(
-    logfile::String, rootdir::String, loglevel::Symbol
+    logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol
 )::@NamedTuple{file::PrettyFileLogger,tee::logex.TeeLogger}
     # Set log level
     level = try getproperty(@__MODULE__, loglevel)
@@ -64,7 +64,7 @@ function PrettyFileLogger(
     kwargs...
 )::PrettyFileLogger
     filehandle = open(path, append ? "a" : "w")
-    PrettyFileLogger(filehandle; kwargs...)
+    PrettyFileLogger(filehandle, level; kwargs...)
 end
 
 """
@@ -107,8 +107,8 @@ function logex.handle_message(filelogger::PrettyFileLogger, level, message, _mod
     logex.handle_message(filelogger.logger, level, message, nothing, group, id, nothing, nothing; kwargs...)
     filelogger.always_flush && flush(filelogger.logger.stream)
 end
-logex.shouldlog(filelogger::PrettyFileLogger, arg...) = true
-logex.min_enabled_level(filelogger::PrettyFileLogger) = logex.BelowMinLevel
+logex.shouldlog(filelogger::PrettyFileLogger, args...) = logex.shouldlog(filelogger.logger, args...)
+logex.min_enabled_level(filelogger::PrettyFileLogger) = logex.min_enabled_level(filelogger.logger)
 logex.catch_exceptions(filelogger::PrettyFileLogger) = logex.catch_exceptions(filelogger.logger)
 
 
@@ -139,7 +139,8 @@ simultaneously with consistent formatting.
 """
 function create_tee_logger(file_logger::logex.AbstractLogger)
     # Wrap console logger with transformer to suppress source info
-    console_logger = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, logex.Info))
+    level = Base.CoreLogging.min_enabled_level(logex.global_logger())
+    console_logger = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, level))
     return logex.TeeLogger(console_logger, file_logger)
 end
 

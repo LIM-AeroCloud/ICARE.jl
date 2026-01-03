@@ -6,7 +6,7 @@
         root::AbstractString=".",
         erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::String = "clean.log",
+        logfile::AbstractString = "clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -14,7 +14,7 @@
         inventory::SortedDict,
         erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::String = "clean.log",
+        logfile::AbstractString = "clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -30,14 +30,14 @@ parameter values are predefined constants from the `Extension` enum.
 Both methods return the updated `inventory` for reference.
 
 See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref),
-[`convert!`](@ref), [`convert(::AbstractString)`](@ref), [`sftp_download`](@ref)
+[`convert_inventory!`](@ref), [`convert_inventory`](@ref), [`sftp_download`](@ref)
 
 # Keyword Arguments
 
 - `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
   file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
   the inventory. Can be used to keep log or metadata files.
-- `logfile::String`: The name of the log file (default: `"clean.log"`; the name will be appended
+- `logfile::AbstractString`: The name of the log file (default: `"clean.log"`; the name will be appended
   by the current date and time).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 """
@@ -47,13 +47,11 @@ function clean!(
     root::AbstractString=".",
     erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::String = "clean.log",
+    logfile::AbstractString = "clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
-    path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict()
-    load_inventory!(inventory, path)
+    inventory = load_inventory(root)
     # Call the clean method for the inventory
     clean!(inventory, erase; keepext, logfile, loglevel)
 end
@@ -62,7 +60,7 @@ function clean!(
     inventory::SortedDict,
     erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::String = "clean.log",
+    logfile::AbstractString = "clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Start
@@ -114,7 +112,7 @@ end
     ignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any};
-        logfile::String = "ignore.log",
+        logfile::AbstractString = "ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -127,7 +125,7 @@ See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_down
 function ignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any};
-    logfile::String = "ignore.log",
+    logfile::AbstractString = "ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
@@ -177,7 +175,7 @@ end
     unignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any}=Dict{Date,Any}();
-        logfile::String = "ignore.log",
+        logfile::AbstractString = "ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -190,7 +188,7 @@ See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_downlo
 function unignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
-    logfile::String = "ignore.log",
+    logfile::AbstractString = "ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
@@ -313,13 +311,13 @@ function list_inventory(
 end
 
 
-## Functions for attaching and detaching extra data
+#* Functions for attaching and detaching extra data
 
 """
     attach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}};
-        logfile::String = "extras.log",
+        logfile::AbstractString = "extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -331,15 +329,35 @@ specified `loglevel` to the `logfile`. A timestamp is appended to the log file n
 
 See also: [`detach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
+function attach! end
+
 function attach!(
     inventory::SortedDict,
-    extras::Union{AbstractString,Vector{<:AbstractString}};
-    logfile::String = "extras.log",
+    extras::AbstractString;
+    logfile::AbstractString = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    attach!(inventory, [String(extras)]; logfile, loglevel)
+end
+
+function attach!(
+    inventory::SortedDict,
+    extras::Vector{<:AbstractString};
+    logfile::AbstractString = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    attach!(inventory, String.(extras); logfile, loglevel)
+end
+
+function attach!(
+    inventory::SortedDict,
+    extras::Vector{String};
+    logfile::AbstractString = "extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Init
     t0 = Dates.now()
-    extras isa AbstractString && (extras = [extras])
+    extras = String.(extras)
     haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
     root = inventory["metadata"]["local"]["path"]
     logger = init_logging(logfile, root, loglevel)
@@ -425,7 +443,7 @@ end
     detach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
-        logfile::String = "extras.log",
+        logfile::AbstractString = "extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -439,20 +457,39 @@ to the `logfile`. A timestamp is appended to the log file name automatically.
 
 See also: [`attach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
+function detach! end
+
 function detach!(
     inventory::SortedDict,
-    extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
-    logfile::String = "extras.log",
+    extras::AbstractString;
+    logfile::AbstractString = "extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
+    detach!(inventory, [String(extras)]; logfile, loglevel)
+end
+
+function detach!(
+    inventory::SortedDict,
+    extras::Vector{<:AbstractString};
+    logfile::AbstractString = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    detach!(inventory, String.(extras); logfile, loglevel)
+end
+
+function detach!(
+    inventory::SortedDict,
+    extras::Vector{String};
+    logfile::AbstractString = "extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    extras = String.(extras)
     # Initial checks
     t0 = Dates.now()
     sleep(0.002) # ℹ ensure different updated time from t0
     if !haskey(inventory, "extras")
         @info "no extras section found in the inventory, nothing to detach"
         return inventory
-    elseif extras isa AbstractString
-        extras = [extras]
     elseif isempty(extras)
         delete!(inventory, "extras")
         @info "all extras detached from the inventory"
@@ -536,7 +573,7 @@ end
 """
     extrascan(
         inventory::SortedDict,
-        path::String,
+        path::AbstractString,
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
@@ -546,7 +583,7 @@ to `waste`. Allow paths listed as extras in the `inventory`. The function return
 """
 function extrascan(
     inventory::SortedDict,
-    path::String,
+    path::AbstractString,
     database::@NamedTuple{folders::Set{String},files::Set{String}},
     waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
 )::@NamedTuple{folders::Set{String},files::Set{String}}
@@ -585,7 +622,7 @@ end
 """
     localscan(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        root::String,
+        root::AbstractString,
         combine::Function
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
@@ -596,7 +633,7 @@ with the `intersect` function.
 """
 function localscan(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    root::String,
+    root::AbstractString,
     combine::Function
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Setup
@@ -612,7 +649,7 @@ end
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         scanned::NamedTuple{(:folders, :files)},
-        root::String,
+        root::AbstractString,
         combine::Function
     )
 
@@ -622,7 +659,7 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
     scanned::NamedTuple{(:folders, :files)},
-    root::String,
+    root::AbstractString,
     combine::Function
 )::Nothing
     # Get files and folders in root
@@ -761,7 +798,7 @@ Log events to the provided `logger`.
 """
 function detach_parents!(
     inventory::SortedDict,
-    path::String,
+    path::AbstractString,
     logger::logex.AbstractLogger,
 )::Nothing
     parts = splitpath(path)[1:end-1]
