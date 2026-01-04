@@ -5,30 +5,33 @@
 
 """
     init_logging(logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol)
-        -> @NamedTuple{file::logex.AbstractLogger,tee::logex.AbstractLogger}
+        -> @NamedTuple{file::logex.AbstractLogger,tee::logex.AbstractLogger,start::DateTime}
 
-Add a timestamp to the `logfile`. If no path is given in the file name, save logfile to
-`rootdir`. Return the file logger and tee logger for dual logging as `NamedTuple` with fields
-`file` and `tee`.
+Add a timestamp for the start time to the `logfile`. If no path is given in the file name,
+save logfile to `rootdir`. Return the file logger logging to `logfile` and tee logger (for
+simultaneous file and console logging) together with the start time as `NamedTuple` with
+fields `file`, `tee`, and `start`.
 """
 function init_logging(
     logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol
-)::@NamedTuple{file::PrettyFileLogger,tee::logex.TeeLogger}
+)::@NamedTuple{file::PrettyFileLogger,tee::logex.TeeLogger,start::DateTime}
     # Set log level
-    level = try getproperty(@__MODULE__, loglevel)
+    level = try getproperty(Logging, loglevel)
     catch
         @warn "unknown log level $loglevel; using Debug as default"
-        getproperty(@__MODULE__, :Debug)
+        getproperty(Logging, :Debug)
     end
-    # Define log file with timestamp
+    # Define log file with timestamp of start time
+    start = Dates.now()
     contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
     logfile, logext = splitext(logfile)
-    logfile *= "_" * Dates.format(Dates.now(), Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
+    logfile *= "_" * Dates.format(start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
     logfile = expanduser(logfile)
     @info "logging to '$logfile'"
+    # Init loggers and return as NamedTuple
     file_logger = PrettyFileLogger(logfile, level)
     tee_logger = create_tee_logger(file_logger)
-    return (file = file_logger, tee = tee_logger)
+    return (file = file_logger, tee = tee_logger, start = start)
 end
 
 ## Custom file logger
@@ -40,7 +43,7 @@ end
 """
     PrettyFileLogger(
         path::AbstractString,
-        level::Base.CoreLogging.LogLevel=Base.CoreLogging.BelowMinLevel;
+        level::Logging.LogLevel=Logging.BelowMinLevel;
         append::Bool=false,
         kwargs...
     ) -> PrettyFileLogger
@@ -59,7 +62,7 @@ If `always_flush=true` the stream is flushed after every handled log message.
 """
 function PrettyFileLogger(
     path::AbstractString,
-    level::Base.CoreLogging.LogLevel=Base.CoreLogging.BelowMinLevel;
+    level::Logging.LogLevel=Logging.BelowMinLevel;
     append::Bool=false,
     kwargs...
 )::PrettyFileLogger
@@ -70,7 +73,7 @@ end
 """
     PrettyFileLogger(
         filehandle::IOStream,
-        level::Base.CoreLogging.LogLevel=Base.CoreLogging.BelowMinLevel;
+        level::Logging.LogLevel=Logging.BelowMinLevel;
         always_flush::Bool=true,
         kwargs...
     )::PrettyFileLogger
@@ -94,7 +97,7 @@ logger = PrettyFileLogger(io)
 """
 function PrettyFileLogger(
     filehandle::IOStream,
-    level::Base.CoreLogging.LogLevel=Base.CoreLogging.BelowMinLevel;
+    level::Logging.LogLevel=Logging.BelowMinLevel;
     always_flush::Bool=true,
     kwargs...
 )::PrettyFileLogger
@@ -139,7 +142,7 @@ simultaneously with consistent formatting.
 """
 function create_tee_logger(file_logger::logex.AbstractLogger)
     # Wrap console logger with transformer to suppress source info
-    level = Base.CoreLogging.min_enabled_level(logex.global_logger())
+    level = Logging.min_enabled_level(logex.global_logger())
     console_logger = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, level))
     return logex.TeeLogger(console_logger, file_logger)
 end

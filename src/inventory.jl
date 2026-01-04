@@ -32,7 +32,7 @@ end
         daterange::@NamedTuple{start::Date,stop::Date},
         convert::Bool,
         resync::Bool,
-        logger::NamedTuple{(:file, :tee)}
+        logger::NamedTuple{(:file,:tee,:start)}
     )
 
 Initiate the inventory of `icare` server-side data files for the `product` in the `remoteroot`
@@ -54,7 +54,7 @@ function product_database!(
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
     resync::Bool,
-    logger::NamedTuple{(:file, :tee)}
+    logger::NamedTuple{(:file,:tee,:start)}
 )::Nothing
     # Defining inventory source file and available years on server
     database = joinpath(root, product, ".inventory.yaml")

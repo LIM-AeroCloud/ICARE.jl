@@ -14,16 +14,11 @@ import ProgressMeter as pm
 import Dates
 import Dates: Date, DateTime
 import YAML
+import Logging
 import LoggingExtras as logex
 import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
 import Base.Threads: @threads
-
-# global constants
-const Debug = Base.CoreLogging.Debug
-const Info = Base.CoreLogging.Info
-const Warn = Base.CoreLogging.Warn
-const Error = Base.CoreLogging.Error
 
 # global thread lock
 const thread = ReentrantLock()

@@ -115,6 +115,7 @@ function sftp_download(
     # Enforce database update, if file update is selected
     resync |= update
     #* Start logging
+    # ℹ The returned logger named tuple also includes the start time
     logger = init_logging(logfile, productpath, loglevel)
     logex.with_logger(logger.file) do
         range = daterange.start == daterange.stop ? daterange.start :
@@ -126,9 +127,8 @@ function sftp_download(
     end
     #* Syncing local and remote database
     # Get connection to server, go to product folder on remote
-    ts = Dates.now()
     logex.with_logger(logger.file) do
-        @info "initialising database @$ts"
+        @info "initialising database @$(logger.start)"
     end
     icare = icare_connect(user, password, remoteroot, product, logger.tee)
     # ℹ Make inventory available for catch block
@@ -138,7 +138,7 @@ function sftp_download(
             product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
             logex.with_logger(logger.file) do
                 te = Dates.now()
-                @info "setup of database completed in $(Dates.canonicalize(te - ts))) @$te"
+                @info "setup of database completed in $(Dates.canonicalize(te - logger.start))) @$te"
             end
         catch error
             logex.with_logger(logger.tee) do
@@ -149,7 +149,7 @@ function sftp_download(
             return inventory
         finally
             # Ensure that inventory is saved even in case of errors
-            save_inventory(inventory, logger.tee, ts)
+            save_inventory(inventory, logger.tee, logger.start)
         end
     # Log download session
     t0 = Dates.now()
@@ -171,7 +171,7 @@ function sftp_download(
         end
     finally
         #* Log end of download session and save inventory
-        save_inventory(inventory, logger.tee, ts)
+        save_inventory(inventory, logger.tee, logger.start)
         log_counter(counter, logger.tee, t0)
         close(logger.file.logger.stream)
         @info "download session closed, see log file for details"
@@ -316,11 +316,11 @@ end
     sync!(
         icare::SFTP.Client,
         inventory::SortedDict,
-        daterange::@NamedTuple{start::Date, stop::Date},
+        daterange::@NamedTuple{start::Date,stop::Date},
         convert::Bool,
         update::Bool,
         resync::Bool,
-        logger::NamedTuple{(:file, :tee)},
+        logger::NamedTuple{(:file,:tee,:start)},
         counter::Counter
     )
 
@@ -332,11 +332,11 @@ Increase the respective counter for each sync action and log events to `logger`.
 function sync!(
     icare::SFTP.Client,
     inventory::SortedDict,
-    daterange::@NamedTuple{start::Date, stop::Date},
+    daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
     update::Bool,
     resync::Bool,
-    logger::NamedTuple{(:file, :tee)},
+    logger::NamedTuple{(:file,:tee,:start)},
     counter::Counter
 )::Nothing
     #* Define all files for download

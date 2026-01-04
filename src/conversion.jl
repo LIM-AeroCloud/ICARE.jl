@@ -26,6 +26,9 @@ function convert_inventory(
 )::SortedDict
     # Load the inventory from the yaml in the given root
     logger = init_logging(logfile, root, loglevel)
+    logex.with_logger(logger.tee) do
+        @debug "parameters" root sizecheck loglevel
+    end
     inventory = load_inventory(root, logger.tee)
     # Call the conversion method for the inventory
     _convert!(inventory, sizecheck, logger)
@@ -47,7 +50,7 @@ is set to `true`, which will reconvert any file whose size differs from that lis
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
 file name to avoid overwriting existing logs. The function returns the updated `inventory`.
 
-See also: [`convert`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
+See also: [`convert_inventory`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert_inventory!(
     inventory::SortedDict;
@@ -56,6 +59,9 @@ function convert_inventory!(
     loglevel::Symbol = :Debug
 )::SortedDict
     logger = init_logging(String(logfile), inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.tee) do
+        @debug "parameters" sizecheck loglevel
+    end
     _convert!(inventory, sizecheck, logger)
 end
 
@@ -68,7 +74,7 @@ end
     _convert!(
         inventory::SortedDict,
         sizecheck::Bool,
-        logger::NamedTuple{(:file,:tee)}
+        logger::NamedTuple{(:file,:tee,:start)}
     ) -> SortedDict
 
 Implementation of file conversions for wrapper functions `convert_inventory` and `convert_inventory!`.
@@ -76,10 +82,8 @@ Implementation of file conversions for wrapper functions `convert_inventory` and
 function _convert!(
     inventory::SortedDict,
     sizecheck::Bool,
-    logger::NamedTuple{(:file,:tee)}
+    logger::NamedTuple{(:file,:tee,:start)}
 )::SortedDict
-    # Start
-    t0 = Dates.now()
     # Rearrange inventory for better processing
     @info "analyse inventory and local database"
     database = inventory_dates(inventory, none)
@@ -88,7 +92,8 @@ function _convert!(
     db = localscan(database, root, intersect)
     # Clean up local database and save inventory
     conversion(inventory, db.files, sizecheck, logger.file)
-    save_inventory(inventory, logger.tee, t0)
+    save_inventory(inventory, logger.tee, logger.start)
+    close(logger.file.logger.stream)
     @info "conversion session completed"
     return inventory
 end

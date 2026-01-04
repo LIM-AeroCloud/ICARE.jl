@@ -51,9 +51,16 @@ function clean!(
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
-    inventory = load_inventory(root)
+    logger = init_logging(logfile, root, loglevel)
+    inventory = load_inventory(root, logger.tee)
     # Call the clean method for the inventory
-    clean!(inventory, erase; keepext, logfile, loglevel)
+    logex.with_logger(logger.tee) do
+        @info "analyse inventory and local database for cleaning"
+    end
+    logex.with_logger(logger.file) do
+        @debug "parameters" erase keepext loglevel
+    end
+    _clean!(inventory, logger, erase, keepext)
 end
 
 function clean!(
@@ -63,17 +70,41 @@ function clean!(
     logfile::AbstractString = "clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
-    # Start
-    t0 = Dates.now()
     logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
+    logex.with_logger(logger.tee) do
+        @info "analyse inventory and local database for cleaning"
+    end
+    logex.with_logger(logger.file) do
+        @debug "parameters" erase keepext loglevel
+    end
+    _clean!(inventory, logger, erase, keepext)
+end
+
+"""
+    _clean!(
+        inventory::SortedDict,
+        logger::NamedTuple{(:file,:tee,:start)},
+        erase::Extension=none;
+        keepext::Union{AbstractString,Vector{<:AbstractString}}=""
+    ) -> SortedDict
+
+Implementation of the clean-up process for wrapper functions `clean!`.
+"""
+function _clean!(
+    inventory::SortedDict,
+    logger::NamedTuple{(:file,:tee,:start)},
+    erase::Extension,
+    keepext::Union{AbstractString,Vector{<:AbstractString}}
+)::SortedDict
     # Rearrange inventory for better processing
-    @info "analyse inventory and local database"
     database = inventory_dates(inventory, erase)
     # Scan inventory for additional files and folders
     waste = extrascan(inventory, inventory["metadata"]["local"]["path"], database)
+    logex.with_logger(logger.file) do
+        @debug "identified path objects not belonging to database" waste.folders waste.files
+    end
     # Remove current logfile from extra files
-    filter!(!isequal(logfile), waste.files)
+    filter!(!contains(Dates.format(logger.start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS")), waste.files)
     # Keep specified extensions
     if !isempty(keepext)
         keepext isa Vector || (keepext = [keepext])
@@ -94,7 +125,7 @@ function clean!(
         reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
         isdisjoint(reference, waste.files) || begin
             inventory["metadata"]["database"]["updated"] = Dates.now()
-            save_inventory(inventory, logger, t0)
+            save_inventory(inventory, logger, logger.start)
         end
         logex.with_logger(logger.tee) do
             @info "cleaning completed"
@@ -104,6 +135,7 @@ function clean!(
             @info "cleaning cancelled"
         end
     end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -129,10 +161,15 @@ function ignore!(
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
-    t0 = Dates.now()
     haskey(inventory, "ignore") || (inventory["ignore"] = SortedDict{Date, Any}())
     logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
+    logex.with_logger(logger.file) do
+        @info "attempting to ignore the following granules"
+        for (date, granules) in dates
+            @info "$date" granules
+        end
+        @debug "parameters" loglevel
+    end
     # Loop over dates and granules to be ignored
     for (date, granules) in dates
         # Skip dates not in the inventory
@@ -140,7 +177,7 @@ function ignore!(
             logex.with_logger(logger.tee) do
                 @warn "$date not found in inventory, skip ignoring"
             end
-            @info "only dates actually present in the inventory can be ignored"
+            @info "only dates and granules actually present in the inventory can be ignored"
             continue
         end
         # Split granules in outliers, duplicates, and valid granules
@@ -152,21 +189,29 @@ function ignore!(
             duplicates = String[]
             isempty(granules) || (inventory["ignore"][date] = SortedDict())
         end
-        log_ignore(logger.file, outliers, "skipping granules not found in the inventory",
-            level=Warn)
-        log_ignore(logger.file, duplicates, "skipping granules that were already ignored")
+        isempty(outliers) || logex.with_logger(logger.tee) do
+            @warn "skipping granules not found in the inventory" outliers
+        end
+        isempty(duplicates) || logex.with_logger(logger.tee) do
+            @info "skipping granules that were already ignored" duplicates
+        end
         for g in granules
             # Move all valid granules to the ignore section
             inventory["ignore"][date][g] = inventory["dates"][date][g]
             delete!(inventory["dates"][date], g)
             isempty(inventory["dates"][date]) && delete!(inventory["dates"], date)
+            logex.with_logger(logger.file) do
+                @debug "ignored granule $g on $date"
+            end
         end
         isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
-        msg = "ignoring granules on $date"
-        log_ignore(logger.file, granules, msg, msg*"; data moved from dates to ignore section")
     end
     # Save inventory if updated
-    save_inventory(inventory, logger.tee, t0)
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done ignoring"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -192,25 +237,40 @@ function unignore!(
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
-    t0 = Dates.now()
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.file) do
+        isempty(dates) || @info "attempting to unignore the following granules"
+        for (date, granules) in dates
+            @info "$date" granules
+        end
+        @debug "parameters" loglevel
+    end
     if !haskey(inventory, "ignore")
-        @info "no ignore section found in the inventory, nothing to unignore"
+        logex.with_logger(logger.tee) do
+            @warn "no ignore section found in the inventory, nothing to unignore"
+        end
+        close(logger.file.logger.stream)
         return inventory
     end
     # Unignore everything, if no dates are provided
     if isempty(dates)
+        logex.with_logger(logger.tee) do
+            @warn "unignoring all granules in the ignore section"
+        end
         for (key, values) in inventory["ignore"]
             dates[key] = collect(keys(values))
+            logex.with_logger(logger.file) do
+                @info "$key" granules = dates[key]
+            end
         end
     end
-    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
     # Loop over dates and granules to be unignored
     for (date, granules) in dates
         # Skip dates not in the ignore section
         if !haskey(inventory["ignore"], date)
-            log_ignore(logger.file, granules, "no ignored data for $date, nothing to unignore",
-                level=Warn)
+            logex.with_logger(logger.tee) do
+                @warn "no ignored data for $date, nothing to unignore" granules
+            end
             continue
         end
         # Split granules in outliers, duplicates, and valid granules
@@ -222,22 +282,35 @@ function unignore!(
             duplicates = String[]
             isempty(granules) || (inventory["dates"][date] = SortedDict())
         end
-        log_ignore(logger.file, outliers, "skipping granules not found in the ignore section",
-            level=Warn)
-        log_ignore(logger.file, duplicates, "skipping granules that were already unignored")
+        isempty(outliers) || logex.with_logger(logger.tee) do
+            @warn "skipping granules not found in the ignore section" outliers
+        end
+        isempty(duplicates) || logex.with_logger(logger.tee) do
+            @info "skipping granules that were already unignored" duplicates
+        end
         for g in granules
             # Move all valid granules to the dates section
             inventory["dates"][date][g] = inventory["ignore"][date][g]
             delete!(inventory["ignore"][date], g)
             isempty(inventory["ignore"][date]) && delete!(inventory["ignore"], date)
+            logex.with_logger(logger.file) do
+                @debug "unignored granule $g on $date"
+            end
         end
-        isempty(inventory["ignore"]) && delete!(inventory, "ignore")
+        if isempty(inventory["ignore"])
+            delete!(inventory, "ignore")
+            logex.with_logger(logger.tee) do
+                @info "nothing left to ignore, removed ignore section from inventory"
+            end
+        end
         isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
-        msg = "unignoring granules on $date"
-        log_ignore(logger.file, granules, msg, msg*"; data moved from ignore to dates section")
     end
     # Save inventory if updated
-    save_inventory(inventory, logger.tee, t0)
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done unignoring"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -279,7 +352,7 @@ function list_inventory(
     list_gaps && begin
         printstyled("Missing dates\n\n", bold=true, underline=true)
         gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
-            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Warn, show_limited=false))
+            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Info, show_limited=false))
         if !isempty(gaps)
             [println(gap) for gap in gaps]
             println('\n')
@@ -356,12 +429,10 @@ function attach!(
     loglevel::Symbol = :Debug
 )::SortedDict
     # Init
-    t0 = Dates.now()
     extras = String.(extras)
     haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
     root = inventory["metadata"]["local"]["path"]
     logger = init_logging(logfile, root, loglevel)
-    @info "logging to '$logfile'"
     logex.with_logger(logger.file) do
         @info "prepare attachment of extras" extras
     end
@@ -434,7 +505,7 @@ function attach!(
     # Sort file list
     sort!(inventory["extras"])
     # Save inventory if updated
-    save_inventory(inventory, logger.tee, t0)
+    save_inventory(inventory, logger.tee, logger.start)
     return inventory
 end
 
@@ -499,7 +570,6 @@ function detach!(
     end
     # Start logging
     logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
     # Detach all paths and parent folders exclusive to the given path
     for path in extras
         # ℹ relpath ensures no trailing slash in the path
@@ -511,7 +581,7 @@ function detach!(
     # Remove empty extras section
     isempty(inventory["extras"]) && delete!(inventory, "extras")
     # Save inventory if updated
-    save_inventory(inventory, logger.tee, t0)
+    save_inventory(inventory, logger.tee, logger.start)
     return inventory
 end
 
@@ -648,7 +718,7 @@ end
 """
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        scanned::NamedTuple{(:folders, :files)},
+        scanned::NamedTuple{(:folders,:files)},
         root::AbstractString,
         combine::Function
     )
@@ -658,7 +728,7 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 """
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    scanned::NamedTuple{(:folders, :files)},
+    scanned::NamedTuple{(:folders,:files)},
     root::AbstractString,
     combine::Function
 )::Nothing
@@ -815,35 +885,6 @@ end
 
 
 ## Helper functions for user interaction
-
-"""
-    log_ignore(
-        logger::logex.AbstractLogger,
-        granules::Vector{String},
-        msg::AbstractString,
-        screenmsg::AbstractString="";
-        level::logex.LogLevel=Info
-    )
-
-For non-empty `granules`, log the `msg` to the `logger` and print `screenmsg` to the console.
-If `screenmsg` is empty, `msg` is used for both logging and console output.
-The log level can be specified with `level`.
-"""
-function log_ignore(
-    logger::logex.AbstractLogger,
-    granules::Vector{String},
-    msg::AbstractString,
-    screenmsg::AbstractString="";
-    level::logex.LogLevel=Info
-)::Nothing
-    isempty(granules) && return
-    isempty(screenmsg) && (screenmsg = msg)
-    logex.@logmsg level screenmsg granules
-    logex.with_logger(logger) do
-        logex.@logmsg level granules msg
-    end
-end
-
 
 """
     confirm(

@@ -7,10 +7,11 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
-- New logger `PrettyFileLogger` based on `FileLogger` from 
+- Add [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl) as dependency ([#35])
+- New logger `PrettyFileLogger` based on `FileLogger` from
   [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
   wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35])
-  - the new logger supperes module, file, and line information end expands the display of arrays
+  - the new logger suppresses module, file, and line information end expands the display of arrays
 
 ### Changed
 
@@ -23,7 +24,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - **Breaking:** change function names of `convert`/`convert!` to `convert_inventory[!]` to
   avoid type piracy ([#35])
 - All API functions now accept `AbstractString` instead of the stricter `String`
-- Improved Logging for `sftp_download` ([#35])
+- Improved Logging ([#35])
 - Don't consider folder sizes for database size, this is too buggy and inaccurate
 - Use thin spaces between size and unit to log to console and file
 
