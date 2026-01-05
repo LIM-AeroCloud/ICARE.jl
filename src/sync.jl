@@ -434,28 +434,25 @@ function attach!(
     root = inventory["metadata"]["local"]["path"]
     logger = init_logging(logfile, root, loglevel)
     logex.with_logger(logger.file) do
-        @info "prepare attachment of extras" extras
+        @info "schedule attachment of extras to inventory" extras
+        @debug "parameters" loglevel
     end
     for path in extras
-        #* Prepare path, ensure relative paths to the product folder, get relative tree for base
-        # Normalize path name
-        # ℹ relpath ensures no trailing slash in the path, normpath ensures direct path
-        path = normpath(relpath(path))
-        if isabspath(path)
-            if startswith(path, root)
-                r = length(root) + 2 # ℹ next index after slash
-                path = path[r:end]
-            else
-                logex.with_logger(logger.tee) do
-                    @warn "'$path' is outside the product folder, skip attaching"
-                end
-                continue
+        # Prepare path
+        # Create absolute path without trailing slash to check against location of product folder
+        path = normpath(root, chopsuffix(path, Base.Filesystem.path_separator))
+        # Only allow paths within the product folder
+        if startswith(path, root)
+            r = length(root) + 2 # ℹ next index after slash
+            path = path[r:end]
+        else
+            logex.with_logger(logger.tee) do
+                @warn "'$path' is outside the product folder, skip attaching"
             end
+            continue
         end
-        # Save parent tree before tampering with path
-        tree = splitpath(path)[1:end-1]
         # Only attach existing paths within the product folder
-        abspath = try realpath(joinpath(root, path))
+        try realpath(joinpath(root, path))
         catch err
             if err isa Base.IOError
                 logex.with_logger(logger.tee) do
@@ -476,18 +473,11 @@ function attach!(
                 @info "'$path' already in extras, skip attaching"
             end
             continue
-        elseif !startswith(abspath, root)
-            logex.with_logger(logger.tee) do
-                @warn "'$path' is outside the product folder, skip attaching"
-            end
-            continue
-        end
-        logex.with_logger(logger.file) do
-            @debug "attaching '$path' to extras"
         end
         # Save path after successful checks
         attach_path!(inventory, path, logger.tee)
         # Ignore parent tree as well
+        tree = splitpath(path)[1:end-1]
         for i = length(tree):-1:1
             # Check, if parent is already ignored or known as parent
             parent = normpath(tree[1:i]...)
@@ -501,11 +491,15 @@ function attach!(
         end
     end
     # Ensure non-empty Extras
-    isempty(inventory["extras"]) && delete!(inventory, "extras")
+    haskey(inventory, "extras") && isempty(inventory["extras"]) && delete!(inventory, "extras")
     # Sort file list
     sort!(inventory["extras"])
     # Save inventory if updated
     save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done attaching extras"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -550,31 +544,41 @@ end
 
 function detach!(
     inventory::SortedDict,
-    extras::Vector{String};
+    extras::Vector{String}=Vector{String}();
     logfile::AbstractString = "extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
-    extras = String.(extras)
+    # Start logging
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.file) do
+        @info "schedule detachment of extras from inventory" extras
+        @debug "parameters" loglevel
+    end
     # Initial checks
-    t0 = Dates.now()
     sleep(0.002) # ℹ ensure different updated time from t0
-    if !haskey(inventory, "extras")
-        @info "no extras section found in the inventory, nothing to detach"
+    if !haskey(inventory, "extras") || isempty(inventory["extras"])
+        logex.with_logger(logger.tee) do
+            @warn "no extras found in the inventory, nothing to detach"
+        end
+        close(logger.file.logger.stream)
         return inventory
     elseif isempty(extras)
         delete!(inventory, "extras")
-        @info "all extras detached from the inventory"
+        logex.with_logger(logger.tee) do
+            @warn "detached all extras from the inventory"
+        end
         inventory["metadata"]["database"]["updated"] = Dates.now()
-        save_inventory(inventory, logex.global_logger(), t0)
+        save_inventory(inventory, logger.tee, logger.start)
+        close(logger.file.logger.stream)
         return inventory
     end
-    # Start logging
-    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
     # Detach all paths and parent folders exclusive to the given path
     for path in extras
-        # ℹ relpath ensures no trailing slash in the path
+        # Ensure path without trailing slash
+        path = chopsuffix(normpath(path), Base.Filesystem.path_separator)
         isabspath(path) && (path = relpath(path, inventory["metadata"]["local"]["path"]))
-        detach_path!(inventory, path, logger.tee) || continue
+        # Detach path tree
+        detach_path!(inventory, path, logger) || continue
         detach_parents!(inventory, path, logger.tee)
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
@@ -582,6 +586,10 @@ function detach!(
     isempty(inventory["extras"]) && delete!(inventory, "extras")
     # Save inventory if updated
     save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done detaching extras"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -793,7 +801,8 @@ function attach_path!(
     paths = filter(startswith(path), inventory["extras"])
     if !isempty(paths)
         logex.with_logger(logger) do
-            @info "removing previously attached sub-paths of '$path'" paths
+            @info("removing previously attached sub-paths of '$path'",
+                paths = filter(!isequal(joinpath(path, "")), paths))
         end
         filter!(!in(paths), inventory["extras"])
     end
@@ -811,7 +820,7 @@ end
     detach_path!(
         inventory::SortedDict,
         path::AbstractString,
-        logger::logex.AbstractLogger
+        logger::NamedTuple{(:file,:tee,:start)}
     ) -> Bool
 
 Detach the given `path` from the `inventory` extras including any sub-folders within the `path`.
@@ -821,20 +830,24 @@ Log events to the provided `logger`.
 function detach_path!(
     inventory::SortedDict,
     path::AbstractString,
-    logger::logex.AbstractLogger
+    logger::NamedTuple{(:file,:tee,:start)}
 )::Bool
     #* Check for path in inventory extras
     # Check, if path itself is attached or if path is a parent folder to an attached path
     parent = if path in inventory["extras"]
         false
     else
-        path = joinpath(path, "")
-        true
+        if isdir(joinpath(inventory["metadata"]["local"]["path"], path))
+            path = joinpath(path, "")
+            true
+        else
+            false
+        end
     end
     # Skip missing paths
     if path ∉ inventory["extras"]
-        logex.with_logger(logger) do
-            @info "'$path' not found in extras, skip detaching"
+        logex.with_logger(logger.tee) do
+            @warn "'$path' not found in extras, skip detaching"
         end
         return false
     end
@@ -842,12 +855,12 @@ function detach_path!(
     extras = filter(startswith(path), inventory["extras"])
     filter!(!in(extras), inventory["extras"])
     if parent
-        logex.with_logger(logger) do
-            @info "detached a parent folder including other extras" extras
+        logex.with_logger(logger.tee) do
+            @warn "detached a parent folder including other extras" extras
         end
     else
-        logex.with_logger(logger) do
-            @info "detached '$path' from extras"
+        logex.with_logger(logger.file) do
+            @debug "detached '$path' from extras"
         end
     end
     #* Ensure inventory updates are saved later
@@ -878,7 +891,7 @@ function detach_parents!(
         length(parents) == 1 || continue
         filter!(!isequal(parents[1]), inventory["extras"])
         logex.with_logger(logger) do
-            @info "detached parent '$(parents[1])' from extras"
+            @debug "detached parent '$(parents[1])' from extras"
         end
     end
 end
