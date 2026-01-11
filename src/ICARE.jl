@@ -35,4 +35,11 @@ include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion
 include("sync.jl") # routines related to syncing local and remote directories
 
+# Set up global logger to suppress module info
+function __init__()
+    level = Logging.Info
+    global_console = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, level))
+    logex.global_logger(global_console)
+end
+
 end #module ICARE

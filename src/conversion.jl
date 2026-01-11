@@ -6,7 +6,7 @@
     convert_inventory(
         root::AbstractString=".";
         sizecheck::Bool=false,
-        logfile::AbstractString = "conversions.log",
+        logfile::AbstractString = "logs/conversions.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -14,14 +14,15 @@ Convert all files in `root` that are part of the inventory to a new format as de
 If files of the new format already exist, they are skipped unless `sizecheck` is set to `true`,
 which will reconvert any file whose size differs from that listed in the inventory.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
-file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+file name to avoid overwriting existing logs. The `logfile` may include a path (either absolute or
+relative to the product folder). The function returns the updated `inventory`.
 
 See also: [`convert_inventory!`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert_inventory(
     root::String=".";
     sizecheck::Bool=false,
-    logfile::String = "conversions.log",
+    logfile::String = "logs/conversions.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
@@ -39,7 +40,7 @@ end
     convert_inventory!(
         inventory::SortedDict,
         sizecheck::Bool,
-        logfile::AbstractString = "conversions.log",
+        logfile::AbstractString = "logs/conversions.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -48,14 +49,15 @@ in the `inventory`. If files of the new format already exist, they are skipped u
 is set to `true`, which will reconvert any file whose size differs from that listed in the
 `inventory`.
 Logging is written to `logfile` with the specified `loglevel`. A timestamp is added to the log
-file name to avoid overwriting existing logs. The function returns the updated `inventory`.
+file name to avoid overwriting existing logs. The `logfile` may include a path (either absolute or
+relative to the product folder). The function returns the updated `inventory`.
 
 See also: [`convert_inventory`](@ref), [`sftp_download`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
 function convert_inventory!(
     inventory::SortedDict;
     sizecheck::Bool=false,
-    logfile::AbstractString = "conversions.log",
+    logfile::AbstractString = "logs/conversions.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     logger = init_logging(String(logfile), inventory["metadata"]["local"]["path"], loglevel)
@@ -74,7 +76,7 @@ end
     _convert!(
         inventory::SortedDict,
         sizecheck::Bool,
-        logger::NamedTuple{(:file,:tee,:start)}
+        logger::Logger
     ) -> SortedDict
 
 Implementation of file conversions for wrapper functions `convert_inventory` and `convert_inventory!`.
@@ -82,7 +84,7 @@ Implementation of file conversions for wrapper functions `convert_inventory` and
 function _convert!(
     inventory::SortedDict,
     sizecheck::Bool,
-    logger::NamedTuple{(:file,:tee,:start)}
+    logger::Logger
 )::SortedDict
     # Rearrange inventory for better processing
     @info "analyse inventory and local database"

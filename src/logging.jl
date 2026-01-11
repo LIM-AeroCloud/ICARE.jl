@@ -4,39 +4,57 @@
 
 
 """
-    init_logging(logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol)
-        -> @NamedTuple{file::logex.AbstractLogger,tee::logex.AbstractLogger,start::DateTime}
+    init_logging(logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol) -> Logger
 
-Add a timestamp for the start time to the `logfile`. If no path is given in the file name,
-save logfile to `rootdir`. Return the file logger logging to `logfile` and tee logger (for
-simultaneous file and console logging) together with the start time as `NamedTuple` with
-fields `file`, `tee`, and `start`.
+Add a timestamp for the start time to the `logfile`. Save logfile relative to `rootdir` or
+consider any absolute paths in `logfile`. Return a `Logger` struct with the two loggers for
+file logging and tee logging (simultaneous file and console logging) together with the
+log `filename` and the `start` time.
 """
 function init_logging(
     logfile::AbstractString, rootdir::AbstractString, loglevel::Symbol
-)::@NamedTuple{file::PrettyFileLogger,tee::logex.TeeLogger,start::DateTime}
+)::Logger
     # Set log level
     level = try getproperty(Logging, loglevel)
     catch
         @warn "unknown log level $loglevel; using Debug as default"
         getproperty(Logging, :Debug)
     end
+    # Check folder to log to
+    folder = dirname(logfile)
+    if folder == "logs"
+        mkpath(joinpath(rootdir, folder))
+    elseif !isempty(folder)
+        isdir(joinpath(rootdir, folder)) || throw(ArgumentError(
+            "cannot save log files to non-existing folder\n$(abspath(rootdir, folder))")
+        )
+    end
     # Define log file with timestamp of start time
     start = Dates.now()
-    contains(logfile, Base.Filesystem.path_separator) || (logfile = joinpath(rootdir, logfile))
+    logfile = normpath(rootdir, expanduser(logfile))
     logfile, logext = splitext(logfile)
     logfile *= "_" * Dates.format(start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS") * logext
-    logfile = expanduser(logfile)
     @info "logging to '$logfile'"
+    # Remember log file in inventory logs
+    open(joinpath(rootdir, ".inventory.logs"), "a") do io
+        println(io, relpath(logfile, rootdir))
+    end
     # Init loggers and return as NamedTuple
     file_logger = PrettyFileLogger(logfile, level)
     tee_logger = create_tee_logger(file_logger)
-    return (file = file_logger, tee = tee_logger, start = start)
+    return Logger(file_logger, tee_logger, logfile, start)
 end
 
+
 ## Custom file logger
-struct PrettyFileLogger <: logex.AbstractLogger
-    logger::logex.ConsoleLogger
+
+"""
+# PrettyFileLogger
+
+A logger sink for file logging based on `ConsoleLogger` with better formatting options.
+"""
+struct PrettyFileLogger <: Logging.AbstractLogger
+    logger::Logging.ConsoleLogger
     always_flush::Bool
 end
 
@@ -134,17 +152,35 @@ end
 
 
 """
-    create_tee_logger(file_logger::logex.AbstractLogger) -> TeeLogger
+    create_tee_logger(file_logger::logex.AbstractLogger) -> Logger
 
-Create a TeeLogger that combines the `file_logger` with a console logger wrapped with
+Create a custom logger that combines the `file_logger` with a console logger wrapped with
 custom_console_logger transformer. This allows logging to both the screen and file
-simultaneously with consistent formatting.
+simultaneously with consistent formatting. Console output always respects the global logger's
+minimum level (typically Info), while file output uses the file logger's configured level.
+
+The console logger is filtered to ensure Debug/lower messages never appear on console,
+regardless of the file logger's level.
 """
 function create_tee_logger(file_logger::logex.AbstractLogger)
-    # Wrap console logger with transformer to suppress source info
-    level = Logging.min_enabled_level(logex.global_logger())
-    console_logger = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, level))
-    return logex.TeeLogger(console_logger, file_logger)
+    # Get the global logger's minimum level for console output (typically Info)
+    console_level = Logging.min_enabled_level(logex.global_logger())
+
+    # Create a filtered console logger that strictly enforces the console level
+    # Use the more restrictive level between console and file to ensure proper filtering
+    file_level = Logging.min_enabled_level(file_logger)
+    effective_level = max(console_level, file_level)
+
+    # Create console logger
+    console_base = logex.ConsoleLogger(stderr, effective_level)
+    console_transformed = logex.TransformerLogger(custom_console_logger, console_base)
+
+    # Filter console to only show messages at console_level or above
+    console_filtered = logex.ActiveFilteredLogger(console_transformed) do log
+        log.level >= console_level
+    end
+
+    return logex.TeeLogger(console_filtered, file_logger)
 end
 
 

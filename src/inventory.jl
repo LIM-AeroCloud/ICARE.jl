@@ -32,7 +32,7 @@ end
         daterange::@NamedTuple{start::Date,stop::Date},
         convert::Bool,
         resync::Bool,
-        logger::NamedTuple{(:file,:tee,:start)}
+        logger::Logger
     )
 
 Initiate the inventory of `icare` server-side data files for the `product` in the `remoteroot`
@@ -54,7 +54,7 @@ function product_database!(
     daterange::@NamedTuple{start::Date,stop::Date},
     convert::Bool,
     resync::Bool,
-    logger::NamedTuple{(:file,:tee,:start)}
+    logger::Logger
 )::Nothing
     # Defining inventory source file and available years on server
     database = joinpath(root, product, ".inventory.yaml")
@@ -119,6 +119,7 @@ function load_inventory!(
     )
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
+    # Note: In the future, add migrations here for older inventory versions
     # Logg success and return inventory
     logex.with_logger(logger) do
         @info "inventory loaded from '$file'"

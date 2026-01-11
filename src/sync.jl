@@ -6,7 +6,8 @@
         root::AbstractString=".",
         erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::AbstractString = "clean.log",
+        logs::Bool=false,
+        logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -14,7 +15,8 @@
         inventory::SortedDict,
         erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::AbstractString = "clean.log",
+        logs::Bool=false,
+        logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -36,9 +38,11 @@ See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`]
 
 - `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
   file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
-  the inventory. Can be used to keep log or metadata files.
-- `logfile::AbstractString`: The name of the log file (default: `"clean.log"`; the name will be appended
-  by the current date and time).
+  the inventory. Can be used to keep metadata or analysis/results files.
+- `logs::Bool`: Whether to clean (`true`) or keep (`false`) log files created during previous
+    operations (default: `false`).
+- `logfile::AbstractString`: The name of the log file (default: `"logs/clean.log"`; the name will be appended
+  by the start timestamp). The name may include a path (either absolute or relative to the product folder).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 """
 function clean! end
@@ -47,7 +51,8 @@ function clean!(
     root::AbstractString=".",
     erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::AbstractString = "clean.log",
+    logs::Bool=false,
+    logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
@@ -58,16 +63,17 @@ function clean!(
         @info "analyse inventory and local database for cleaning"
     end
     logex.with_logger(logger.file) do
-        @debug "parameters" erase keepext loglevel
+        @debug "parameters" erase keepext logs loglevel
     end
-    _clean!(inventory, logger, erase, keepext)
+    _clean!(inventory, logger, erase, keepext, logs)
 end
 
 function clean!(
     inventory::SortedDict,
     erase::Extension=none;
     keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::AbstractString = "clean.log",
+    logs::Bool=false,
+    logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
@@ -75,15 +81,15 @@ function clean!(
         @info "analyse inventory and local database for cleaning"
     end
     logex.with_logger(logger.file) do
-        @debug "parameters" erase keepext loglevel
+        @debug "parameters" erase keepext logs loglevel
     end
-    _clean!(inventory, logger, erase, keepext)
+    _clean!(inventory, logger, erase, keepext, logs)
 end
 
 """
     _clean!(
         inventory::SortedDict,
-        logger::NamedTuple{(:file,:tee,:start)},
+        logger::Logger,
         erase::Extension=none;
         keepext::Union{AbstractString,Vector{<:AbstractString}}=""
     ) -> SortedDict
@@ -92,19 +98,36 @@ Implementation of the clean-up process for wrapper functions `clean!`.
 """
 function _clean!(
     inventory::SortedDict,
-    logger::NamedTuple{(:file,:tee,:start)},
+    logger::Logger,
     erase::Extension,
-    keepext::Union{AbstractString,Vector{<:AbstractString}}
+    keepext::Union{AbstractString,Vector{<:AbstractString}},
+    logs::Bool
 )::SortedDict
     # Rearrange inventory for better processing
     database = inventory_dates(inventory, erase)
-    # Scan inventory for additional files and folders
-    waste = extrascan(inventory, inventory["metadata"]["local"]["path"], database)
+    # Define root folder and extras
+    root = inventory["metadata"]["local"]["path"]
+    extras = haskey(inventory, "extras") ?
+        joinpath.(root, inventory["extras"]) : String[]
+    # Load list of all log files
+    logfiles, extralogs = get_logs(root)
+
+    # Remove current logfile from extra files
+    if logs
+        # Only keep current log file (allow old logs to be deleted)
+        startswith(logger.filename, "..") ?
+             pop!(logfiles) : _attach!(extras, [logger.filename], root, logger)
+    else
+        # Keep all log files as extras (protect all from deletion)
+        _attach!(extras, logfiles, root, logger)
+    end
+    # filter!(!contains(Dates.format(logger.start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS")), waste.files)
+    waste = extrascan(normpath.(root, extras), root, database)
+    # Ensure to delete logs outside the product folder
+    logs && union!(waste.files, normpath.(root, extralogs))
     logex.with_logger(logger.file) do
         @debug "identified path objects not belonging to database" waste.folders waste.files
     end
-    # Remove current logfile from extra files
-    filter!(!contains(Dates.format(logger.start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS")), waste.files)
     # Keep specified extensions
     if !isempty(keepext)
         keepext isa Vector || (keepext = [keepext])
@@ -122,6 +145,12 @@ function _clean!(
         end
         rm.(waste.files, force=true)
         rm.(waste.folders, recursive=true, force=true)
+        if logs
+            rm.(joinpath.(root, extralogs), force=true)
+            open(joinpath.(root, ".inventory.logs"), "w+") do io
+                println(io, logger.filename)
+            end
+        end
         reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
         isdisjoint(reference, waste.files) || begin
             inventory["metadata"]["database"]["updated"] = Dates.now()
@@ -144,20 +173,21 @@ end
     ignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any};
-        logfile::AbstractString = "ignore.log",
+        logfile::AbstractString = "logs/ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
-file name automatically. The function returns the updated `inventory`.
+file name automatically. The `logfile` may include a path (either absolute or relative to the
+product folder). The function returns the updated `inventory`.
 
 See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function ignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any};
-    logfile::AbstractString = "ignore.log",
+    logfile::AbstractString = "logs/ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
@@ -220,20 +250,21 @@ end
     unignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any}=Dict{Date,Any}();
-        logfile::AbstractString = "ignore.log",
+        logfile::AbstractString = "logs/ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
 Unflag the `dates` from being ignored in the `inventory` and allow them to be downloaded again.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
-file name automatically. The function returns the updated `inventory`.
+file name automatically. The `logfile` may include a path (either absolute or relative to the
+product folder). The function returns the updated `inventory`.
 
 See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function unignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
-    logfile::AbstractString = "ignore.log",
+    logfile::AbstractString = "logs/ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
@@ -390,7 +421,7 @@ end
     attach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}};
-        logfile::AbstractString = "extras.log",
+        logfile::AbstractString = "logs/extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -399,6 +430,7 @@ Files nested in foreign folders are recognised as well keeping the parent folder
 operations. The `extras` can be provided as a single `AbstractString` or as a vector of
 `AbstractString`s. The function returns the updated `inventory` and logs events with the
 specified `loglevel` to the `logfile`. A timestamp is appended to the log file name automatically.
+The `logfile` may include a path (either absolute or relative to the product folder).
 
 See also: [`detach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
@@ -407,7 +439,7 @@ function attach! end
 function attach!(
     inventory::SortedDict,
     extras::AbstractString;
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     attach!(inventory, [String(extras)]; logfile, loglevel)
@@ -416,7 +448,7 @@ end
 function attach!(
     inventory::SortedDict,
     extras::Vector{<:AbstractString};
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     attach!(inventory, String.(extras); logfile, loglevel)
@@ -425,26 +457,58 @@ end
 function attach!(
     inventory::SortedDict,
     extras::Vector{String};
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Init
-    extras = String.(extras)
-    haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
+    extradata = haskey(inventory, "extras") ? inventory["extras"] : Vector{String}()
     root = inventory["metadata"]["local"]["path"]
     logger = init_logging(logfile, root, loglevel)
     logex.with_logger(logger.file) do
         @info "schedule attachment of extras to inventory" extras
         @debug "parameters" loglevel
     end
-    for path in extras
+    # Attach extras and track updates
+    updated = _attach!(extradata, extras, root, logger)
+    if updated
+        inventory["metadata"]["database"]["updated"] = Dates.now()
+        inventory["extras"] = extradata
+    end
+    # Save and return updated inventory
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done attaching extras"
+    end
+    close(logger.file.logger.stream)
+    return inventory
+end
+
+
+"""
+    _attach!(
+        extras::Vector{String},
+        attachments::Vector{String},
+        root::String,
+        logger::Logger
+    ) -> Bool
+
+Implementation of the attach process for wrapper function `attach!`.
+"""
+function _attach!(
+    extras::Vector{String},
+    attachments::Vector{String},
+    root::String,
+    logger::Logger
+)::Bool
+    # Track updates and loop over attachments
+    updated = false
+    for path in attachments
         # Prepare path
         # Create absolute path without trailing slash to check against location of product folder
         path = normpath(root, chopsuffix(path, Base.Filesystem.path_separator))
         # Only allow paths within the product folder
         if startswith(path, root)
-            r = length(root) + 2 # ℹ next index after slash
-            path = path[r:end]
+            path = relpath(path, root)
         else
             logex.with_logger(logger.tee) do
                 @warn "'$path' is outside the product folder, skip attaching"
@@ -468,39 +532,32 @@ function attach!(
             end
             continue
         end
-        if path in inventory["extras"]
+        # Skip already attached paths
+        if path in extras
             logex.with_logger(logger.tee) do
                 @info "'$path' already in extras, skip attaching"
             end
             continue
         end
         # Save path after successful checks
-        attach_path!(inventory, path, logger.tee)
+        updated |= attach_path!(extras, path, logger.tee)
         # Ignore parent tree as well
-        tree = splitpath(path)[1:end-1]
+        tree = path |> dirname |> splitpath
         for i = length(tree):-1:1
             # Check, if parent is already ignored or known as parent
             parent = normpath(tree[1:i]...)
-            parent in inventory["extras"] && break
+            parent in extras && break
             parent = joinpath(parent, "")
-            parent in inventory["extras"] && break
-            push!(inventory["extras"], parent)
+            parent in extras && break
+            push!(extras, parent)
             logex.with_logger(logger.file) do
                 @debug("attaching parent folder '$parent' to extras")
             end
         end
     end
-    # Ensure non-empty Extras
-    haskey(inventory, "extras") && isempty(inventory["extras"]) && delete!(inventory, "extras")
     # Sort file list
-    sort!(inventory["extras"])
-    # Save inventory if updated
-    save_inventory(inventory, logger.tee, logger.start)
-    logex.with_logger(logger.tee) do
-        @info "done attaching extras"
-    end
-    close(logger.file.logger.stream)
-    return inventory
+    sort!(extras)
+    return updated
 end
 
 
@@ -508,7 +565,7 @@ end
     detach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
-        logfile::AbstractString = "extras.log",
+        logfile::AbstractString = "logs/extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -518,7 +575,8 @@ For nested files and folders, the parent will be detached as well, if it contain
 data.
 
 The function returns the updated `inventory` and logs events with the specified `loglevel`
-to the `logfile`. A timestamp is appended to the log file name automatically.
+to the `logfile`. A timestamp is appended to the log file name automatically. The `logfile`
+may include a path (either absolute or relative to the product folder).
 
 See also: [`attach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
@@ -527,7 +585,7 @@ function detach! end
 function detach!(
     inventory::SortedDict,
     extras::AbstractString;
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     detach!(inventory, [String(extras)]; logfile, loglevel)
@@ -536,7 +594,7 @@ end
 function detach!(
     inventory::SortedDict,
     extras::Vector{<:AbstractString};
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     detach!(inventory, String.(extras); logfile, loglevel)
@@ -545,7 +603,7 @@ end
 function detach!(
     inventory::SortedDict,
     extras::Vector{String}=Vector{String}();
-    logfile::AbstractString = "extras.log",
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Start logging
@@ -617,8 +675,8 @@ function inventory_dates(
     folders, files = Set{String}(), Set{String}()
     root = inventory["metadata"]["local"]["path"]
     ext, newext = inventory["metadata"]["file"]["ext"], inventory["metadata"]["file"]["newext"]
-    # Define inventory as part of files to be kept
-    push!(files, joinpath(root, ".inventory.yaml"))
+    # Keep inventory files
+    push!(files, joinpath.(root, [".inventory.yaml", ".inventory.logs"])...)
     # Create year set for folder tracking
     years = Set{Int}()
     # Loop over filtered dates and granules
@@ -650,48 +708,37 @@ end
 
 """
     extrascan(
-        inventory::SortedDict,
+        extrapaths::Vector,
         path::AbstractString,
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Recursively scan the `path` for files and folders not present in the `database` and save them
-to `waste`. Allow paths listed as extras in the `inventory`. The function returns the `waste`.
+to `waste` unless listed in `extrapaths`. The function returns the `waste`.
 """
 function extrascan(
-    inventory::SortedDict,
+    extrapaths::Vector,
     path::AbstractString,
     database::@NamedTuple{folders::Set{String},files::Set{String}},
     waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Scan path for extra files
     path_waste = localscan(database, path, setdiff)
-    # Check extras, if available
-    if haskey(inventory, "extras")
-        # Filter out allowed extras
-        extrapaths = joinpath.(inventory["metadata"]["local"]["path"], inventory["extras"])
-        filter!(!in(extrapaths), path_waste.folders)
-        filter!(!in(extrapaths), path_waste.files)
-        # Scan for possible parent folders with allowed nested extras
-        extras = joinpath.(path_waste.folders, "")
-        filter!(in(extrapaths), extras)
-        # ℹ Remove trailing slash from parent folder and search and remove for them in path_waste.folders
-        filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
-    else
-        extras = String[]
-    end
+    # Filter out allowed extras
+    filter!(!in(extrapaths), path_waste.folders)
+    filter!(!in(extrapaths), path_waste.files)
+    # Scan for possible parent folders with allowed nested extras
+    extras = joinpath.(path_waste.folders, "")
+    filter!(in(extrapaths), extras)
+    # ℹ Remove folders from waste folders that are classified as parents in extras
+    filter!(p -> p ∉ chopsuffix.(extrapaths, Base.Filesystem.path_separator), path_waste.folders)
     # Save waste of current path to overall waste
     union!(waste.folders, path_waste.folders)
     union!(waste.files, path_waste.files)
     # Recursively scan for nested extras
     for extra in extras
-        extrascan(
-            inventory,
-            extra,
-            database,
-            waste
-        )
+        extrascan(extrapaths, extra, database, waste)
     end
     return waste
 end
@@ -742,7 +789,8 @@ function _localscan!(
 )::Nothing
     # Get files and folders in root
     content = readdir(root, join=true)
-    files = filter(isfile, content)
+    # ℹ Make sure not to miss anything and list everything that is not a folder under files
+    files = filter(!isdir, content)
     folders = filter(isdir, content)
     # Save extra files and folders
     union!(scanned.folders, combine(folders, database.folders))
@@ -774,45 +822,44 @@ end
 
 """
     attach_path!(
-        inventory::SortedDict,
+        extras::Vector{String},
         path::AbstractString,
         logger::logex.AbstractLogger
-    )
+    ) -> Bool
 
-Attach a `path` to the `inventory` extras unless a parent folder is already ignored.
-Remove possible sub-folders of `path` previously attached to the `inventory`.
+Attach a `path` to the `extras` unless a parent folder is already ignored.
+Remove possible sub-folders of `path` previously attached to the `extras`.
 Log events to the provided `logger`.
 """
 function attach_path!(
-    inventory::SortedDict,
+    extras::Vector{String},
     path::AbstractString,
     logger::logex.AbstractLogger
-)::Nothing
+)::Bool
     # Check parent folders are not already attached
     parts = splitpath(path)[1:end-1]
     paths = [joinpath(parts[1:i]...) for i in 1:length(parts)]
-    if !isdisjoint(inventory["extras"], paths)
+    if !isdisjoint(extras, paths)
         logex.with_logger(logger) do
             @info "parent folder of '$path' already attached, skip attaching"
         end
-        return
+        return false
     end
     # Remove previously ignored subpaths from inventory extras
-    paths = filter(startswith(path), inventory["extras"])
+    paths = filter(startswith(path), extras)
     if !isempty(paths)
         logex.with_logger(logger) do
             @info("removing previously attached sub-paths of '$path'",
                 paths = filter(!isequal(joinpath(path, "")), paths))
         end
-        filter!(!in(paths), inventory["extras"])
+        filter!(!in(paths), extras)
     end
     # Attach path
-    push!(inventory["extras"], path)
+    push!(extras, path)
     logex.with_logger(logger) do
         @debug "attached '$path' to extras"
     end
-    inventory["metadata"]["database"]["updated"] = Dates.now()
-    return
+    return true
 end
 
 
@@ -820,7 +867,7 @@ end
     detach_path!(
         inventory::SortedDict,
         path::AbstractString,
-        logger::NamedTuple{(:file,:tee,:start)}
+        logger::Logger
     ) -> Bool
 
 Detach the given `path` from the `inventory` extras including any sub-folders within the `path`.
@@ -830,7 +877,7 @@ Log events to the provided `logger`.
 function detach_path!(
     inventory::SortedDict,
     path::AbstractString,
-    logger::NamedTuple{(:file,:tee,:start)}
+    logger::Logger
 )::Bool
     #* Check for path in inventory extras
     # Check, if path itself is attached or if path is a parent folder to an attached path
@@ -896,6 +943,23 @@ function detach_parents!(
     end
 end
 
+
+## Helper functions to remember log files
+
+"""
+    get_logs(root::String) -> Tuple{Vector{String},Vector{String}}
+
+Retrieve previous log files from the `.inventory.logs` file in the `root` folder.
+Return two vectors with log files inside and outside the `root` folder.
+"""
+function get_logs(root::String)::Tuple{Vector{String},Vector{String}}
+    # ℹ Use "a+" append mode to suppress errors for non-existing files
+    logfiles = open(joinpath(root, ".inventory.logs"), "a+") do io
+        seekstart(io)
+        readlines(io)
+    end
+    filter(!startswith(".."), logfiles), filter(startswith(".."), logfiles)
+end
 
 ## Helper functions for user interaction
 

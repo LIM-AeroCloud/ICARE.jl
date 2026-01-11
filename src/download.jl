@@ -15,7 +15,7 @@
         convert::Bool = true,
         resync::Bool = false,
         update::Bool = false,
-        logfile::AbstractString = "downloads.log",
+        logfile::AbstractString = "logs/downloads.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -52,8 +52,9 @@ See also: [`list_inventory`](@ref), [`convert_inventory!`](@ref), [`convert_inve
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`). Converted file sizes will be deleted for any updates.
-- `logfile::AbstractString`: The name of the log file (default: `"downloads.log"`; the name will be appended
-  by the current date and time).
+- `logfile::AbstractString`: The name of the log file (default: `"logs/downloads.log"`;
+  the name will be appended by the start timestamp). If the name may include a path (either
+  absolute or relative to the product folder).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 
 !!! warning
@@ -80,7 +81,7 @@ function sftp_download(
     convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
-    logfile::AbstractString = "downloads.log",
+    logfile::AbstractString = "logs/downloads.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     sftp_download(String(user), String(password), String(product), startdate, enddate;
@@ -100,7 +101,7 @@ function sftp_download(
     convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
-    logfile::String = "downloads.log",
+    logfile::String = "logs/downloads.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     ## Setup
@@ -320,7 +321,7 @@ end
         convert::Bool,
         update::Bool,
         resync::Bool,
-        logger::NamedTuple{(:file,:tee,:start)},
+        logger::Logger,
         counter::Counter
     )
 
@@ -336,7 +337,7 @@ function sync!(
     convert::Bool,
     update::Bool,
     resync::Bool,
-    logger::NamedTuple{(:file,:tee,:start)},
+    logger::Logger,
     counter::Counter
 )::Nothing
     #* Define all files for download

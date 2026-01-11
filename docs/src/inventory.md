@@ -1,4 +1,4 @@
-# Analysing and manipulating the inventory
+# The database inventory
 
 ## Analysing the inventory
 
@@ -111,3 +111,28 @@ Function [`attach!`](@ref) can be used to flag files and folders as `extras` and
 attach!
 detach!
 ```
+
+## Inventory Changelog
+
+The inventory has its own version. Like the _ICARE_ package, the inventory follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses
+[Keep a Changelog style](https://keepachangelog.com/en/1.1.0/).
+
+However, non-breaking changes in the inventory might lead to breaking changes in the _ICARE_
+package and, conversely, breaking changes in the inventory need not necessarily be breaking in
+_ICARE_. Therefore, separate versions and changelogs are introduced for the package and its
+inventory.
+
+## [v1.0.0] - 2025-12-27
+
+### Added
+
+- First stable version of the inventory (being tracked from now on) with sections for
+  - `dates` holding file stats of all available granules for all available dates
+  - `extras` marking path objects in the local product folder that are considered attached to
+    the inventory, but not part of the inventory, and will be refrained from cleaning processes
+  - `ignore` marking inventory data (e.g. corrupt granules) that are not considered part of the
+    local database and will not be downloaded or will be removed during cleaning processes
+  - `gaps` holding all dates in the inventory time span with no data available
+  - `metadata` with statistics about the inventory, e.g. available dates, sizes, file counts, etc.
+    and information needed for processing the inventory
