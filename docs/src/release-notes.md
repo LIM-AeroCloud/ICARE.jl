@@ -16,6 +16,10 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
   wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
   - the new logger suppresses module, file, and line information end expands the display of arrays
+- previous log files are now saved to a `.inventory.logs` file and remembered for clean-up. This
+  allows cleaning of log files outside the product folder (**breaking!**, [#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28)).
+- `global_logger` is now formatted during package init ([#33](https://github.com/LIM-AeroCloud/ICARE.jl/issues/33))
+- New Changelog for the inventory in the documentation as separate Changelog from this one
 
 ### Changed
 
@@ -31,11 +35,28 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Improved Logging ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
 - Don't consider folder sizes for database size, this is too buggy and inaccurate
 - Use thin spaces between size and unit to log to console and file
+- **Breaking:** Save log files to a `logs` folder instead of the product folder by default.
+  If the folder doesn't exist, it will be created ([#34](https://github.com/LIM-AeroCloud/ICARE.jl/issues/34)).
+- Don't log debug logs of successful attachment to console to be in line with the other sync
+  functions. This should not have an impact as the default console log level is Info ([#34](https://github.com/LIM-AeroCloud/ICARE.jl/issues/34)).
+- **Breaking:** If the log file name includes a relative path, it is now relative to the product
+  folder rather than the current directory ([#46](https://github.com/LIM-AeroCloud/ICARE.jl/issues/46)).
+- Internal refactoring:
+  - Use `Logger` struct instead of named tuple to pass on different loggers ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Separate implementation of `attach!` to an internal `_attach!` function that can be used
+    by `clean!` ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Operate `extrascan` and `attach_path!` on a `Vector{String}` rather then the extras section
+    of the inventory ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Filter files with `!isdir` rather than `isfile` to be sure to not miss any path objects like
+    symlinks, which will now be listed under files ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
 
 ### Removed
 
 - **Breaking:** Remove functions `convert`/`convert!` in favour of `convert_inventory[!]`
   to avoid type piracy ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- **Breaking:** Remove kwarg `keepext` from `clean!`. The implementation was buggy working only
+  for files in inventory folders not in subfolders and cleaning could be ambiguous with the new
+  `logs` option ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28)).
 
 ## [v0.6.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0) - 2025-12-27
 

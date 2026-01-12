@@ -5,7 +5,6 @@
     clean!(
         root::AbstractString=".",
         erase::Extension=none;
-        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
         logs::Bool=false,
         logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
@@ -14,7 +13,6 @@
     clean!(
         inventory::SortedDict,
         erase::Extension=none;
-        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
         logs::Bool=false,
         logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
@@ -36,9 +34,6 @@ See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`]
 
 # Keyword Arguments
 
-- `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
-  file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
-  the inventory. Can be used to keep metadata or analysis/results files.
 - `logs::Bool`: Whether to clean (`true`) or keep (`false`) log files created during previous
     operations (default: `false`).
 - `logfile::AbstractString`: The name of the log file (default: `"logs/clean.log"`; the name will be appended
@@ -50,7 +45,6 @@ function clean! end
 function clean!(
     root::AbstractString=".",
     erase::Extension=none;
-    keepext::Union{AbstractString,Vector{<:AbstractString}}="",
     logs::Bool=false,
     logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
@@ -63,15 +57,14 @@ function clean!(
         @info "analyse inventory and local database for cleaning"
     end
     logex.with_logger(logger.file) do
-        @debug "parameters" erase keepext logs loglevel
+        @debug "parameters" erase logs loglevel
     end
-    _clean!(inventory, logger, erase, keepext, logs)
+    _clean!(inventory, logger, erase, logs)
 end
 
 function clean!(
     inventory::SortedDict,
     erase::Extension=none;
-    keepext::Union{AbstractString,Vector{<:AbstractString}}="",
     logs::Bool=false,
     logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
@@ -81,9 +74,9 @@ function clean!(
         @info "analyse inventory and local database for cleaning"
     end
     logex.with_logger(logger.file) do
-        @debug "parameters" erase keepext logs loglevel
+        @debug "parameters" erase logs loglevel
     end
-    _clean!(inventory, logger, erase, keepext, logs)
+    _clean!(inventory, logger, erase, logs)
 end
 
 """
@@ -91,7 +84,6 @@ end
         inventory::SortedDict,
         logger::Logger,
         erase::Extension=none;
-        keepext::Union{AbstractString,Vector{<:AbstractString}}=""
     ) -> SortedDict
 
 Implementation of the clean-up process for wrapper functions `clean!`.
@@ -100,7 +92,6 @@ function _clean!(
     inventory::SortedDict,
     logger::Logger,
     erase::Extension,
-    keepext::Union{AbstractString,Vector{<:AbstractString}},
     logs::Bool
 )::SortedDict
     # Rearrange inventory for better processing
@@ -128,13 +119,6 @@ function _clean!(
     logex.with_logger(logger.file) do
         @debug "identified path objects not belonging to database" waste.folders waste.files
     end
-    # Keep specified extensions
-    if !isempty(keepext)
-        keepext isa Vector || (keepext = [keepext])
-        for ext in keepext
-            filter!(!endswith(ext), waste.files)
-        end
-    end
     # Clean up local database
     if confirm(waste, logger.file)
         logex.with_logger(logger.file) do
@@ -148,7 +132,7 @@ function _clean!(
         if logs
             rm.(joinpath.(root, extralogs), force=true)
             open(joinpath.(root, ".inventory.logs"), "w+") do io
-                println(io, logger.filename)
+                println(io, relpath(logger.filename, root))
             end
         end
         reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
@@ -540,9 +524,9 @@ function _attach!(
             continue
         end
         # Save path after successful checks
-        updated |= attach_path!(extras, path, logger.tee)
+        updated |= attach_path!(extras, path, logger.tee, logger.file)
         # Ignore parent tree as well
-        tree = path |> dirname |> splitpath
+        tree = splitpath(path)[1:end-1]
         for i = length(tree):-1:1
             # Check, if parent is already ignored or known as parent
             parent = normpath(tree[1:i]...)
@@ -834,13 +818,14 @@ Log events to the provided `logger`.
 function attach_path!(
     extras::Vector{String},
     path::AbstractString,
-    logger::logex.AbstractLogger
+    tee_logger::logex.AbstractLogger,
+    file_logger::logex.AbstractLogger
 )::Bool
     # Check parent folders are not already attached
     parts = splitpath(path)[1:end-1]
     paths = [joinpath(parts[1:i]...) for i in 1:length(parts)]
     if !isdisjoint(extras, paths)
-        logex.with_logger(logger) do
+        logex.with_logger(tee_logger) do
             @info "parent folder of '$path' already attached, skip attaching"
         end
         return false
@@ -848,7 +833,7 @@ function attach_path!(
     # Remove previously ignored subpaths from inventory extras
     paths = filter(startswith(path), extras)
     if !isempty(paths)
-        logex.with_logger(logger) do
+        logex.with_logger(tee_logger) do
             @info("removing previously attached sub-paths of '$path'",
                 paths = filter(!isequal(joinpath(path, "")), paths))
         end
@@ -856,7 +841,7 @@ function attach_path!(
     end
     # Attach path
     push!(extras, path)
-    logex.with_logger(logger) do
+    logex.with_logger(file_logger) do
         @debug "attached '$path' to extras"
     end
     return true
