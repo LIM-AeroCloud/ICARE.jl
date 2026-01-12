@@ -151,4 +151,4 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
 ### Separate file conversions
 
 Routines exist to do batch conversions of the existing files and are described in the section
-about [Analysing and manipulating the inventory](@ref).
+about [The database inventory](@ref).
