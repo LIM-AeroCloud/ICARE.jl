@@ -15,6 +15,7 @@ import Dates
 import Dates: Date, DateTime
 import YAML
 import Logging
+import LoggingExtras as logex
 import DataStructures: SortedDict, OrderedDict
 import Printf: @sprintf
 import Base.Threads: @threads
@@ -23,17 +24,22 @@ import Base.Threads: @threads
 const thread = ReentrantLock()
 
 # Export functions and types
-export sftp_download, convert!, clean!, list_inventory, load_inventory, ignore!, unignore!,
-    attach!, detach!, Extension, original, converted
-@static if VERSION ≥ v"1.11"
-    eval(Meta.parse("public convert"))
-end
+export sftp_download, convert_inventory, convert_inventory!, clean!, list_inventory, load_inventory,
+    ignore!, unignore!, attach!, detach!, PrettyFileLogger, Extension, original, converted
 
 # Include source files
 include("types.jl") # types and exceptions
+include("logging.jl") # routines related to logging
 include("inventory.jl") # routines related to the local inventory
 include("download.jl") # routines related to syncing with ICARE
 include("conversion.jl") # routines related to hdf4 > hdf5 conversion
 include("sync.jl") # routines related to syncing local and remote directories
+
+# Set up global logger to suppress module info
+function __init__()
+    level = Logging.Info
+    global_console = logex.TransformerLogger(custom_console_logger, logex.ConsoleLogger(stderr, level))
+    logex.global_logger(global_console)
+end
 
 end #module ICARE

@@ -39,18 +39,18 @@ SFTP download
 
 ```julia
 function sftp_download(
-    user::String,
-    password::String,
-    product::String,
+    user::AbstractString,
+    password::AbstractString,
+    product::AbstractString,
     startdate::Int,
     enddate::Int=-1;
     version::Union{Nothing,Real} = 4.51,
-    remoteroot::String = "/SPACEBORNE/CALIOP/",
-    localroot::String = ".",
+    remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
+    localroot::AbstractString = ".",
     convert::Bool = true,
     resync::Bool = false,
     update::Bool = false,
-    logfile::String = "downloads.log",
+    logfile::AbstractString = "downloads.log",
     loglevel::Symbol = :Debug
 )::SortedDict
 ```
