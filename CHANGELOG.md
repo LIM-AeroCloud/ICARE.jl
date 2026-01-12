@@ -11,7 +11,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - New logger `PrettyFileLogger` based on `FileLogger` from
   [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
   wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35])
-  - the new logger suppresses module, file, and line information end expands the display of arrays
+  - the new logger suppresses module, file, and line information and expands the display of arrays
 - previous log files are now saved to a `.inventory.logs` file and remembered for clean-up. This
   allows cleaning of log files outside the product folder (**breaking!**, [#28]).
 - `global_logger` is now formatted during package init ([#33])

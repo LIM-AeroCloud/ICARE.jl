@@ -148,7 +148,9 @@ function _clean!(
             @info "cleaning cancelled"
         end
     end
-    close(logger.file.logger.stream)
+    if isopen(logger.file.logger.stream)
+        close(logger.file.logger.stream)
+    end
     return inventory
 end
 

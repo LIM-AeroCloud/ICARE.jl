@@ -120,7 +120,7 @@ function load_inventory!(
     # Convert version to version number
     inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     # Note: In the future, add migrations here for older inventory versions
-    # Logg success and return inventory
+    # Log success and return inventory
     logex.with_logger(logger) do
         @info "inventory loaded from '$file'"
     end

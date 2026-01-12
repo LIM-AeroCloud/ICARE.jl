@@ -95,7 +95,10 @@ function _convert!(
     # Clean up local database and save inventory
     conversion(inventory, db.files, sizecheck, logger.file)
     save_inventory(inventory, logger.tee, logger.start)
-    close(logger.file.logger.stream)
+    stream = logger.file.logger.stream
+    if stream !== nothing && isopen(stream)
+        close(stream)
+    end
     @info "conversion session completed"
     return inventory
 end
