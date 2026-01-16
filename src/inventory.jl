@@ -607,7 +607,7 @@ end
     ) -> Dict{String,Any}
 
 Calculate statistics for the given `dates` in the `inventory`.
-Dates must be an itable of `Date` objects.
+Dates must be an iterable of `Date` objects.
 The `convert` option can be used to focus statistics on downloads of original or converted files.
 Return a dictionary with the statistics.
 """
@@ -630,9 +630,10 @@ function inventory_stats(
     size_orig = 0
     size_conv = 0
     size_ratio = (original = Int[], converted = Int[])
-    # Scan the local database (restrict to the given year, if by_year is true)
+    # Scan the local database for the given dates
     db = inventory_dates(inventory, none, dates)
     data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
+    data_files = Set(basename.(data.files))
     # Calculate inventory-based stats
     for date in dates
         for (file, granule_data) in inventory["dates"][date]
@@ -642,8 +643,8 @@ function inventory_stats(
             # Check local file counts and sizes
             origsize = get(granule_data, "size", 0)
             newsize = get(granule_data, newext_key, 0)
-            norig = file*ext in basename.(data.files) ? 1 : 0
-            nconv = file*newext in basename.(data.files) ? 1 : 0
+            norig = file*ext in data_files ? 1 : 0
+            nconv = file*newext in data_files ? 1 : 0
             if nconv > 0 && newsize > 0 && convert !== false
                 # Count current local converted files and sizes
                 converted_files += 1
