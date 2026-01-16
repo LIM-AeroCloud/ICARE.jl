@@ -369,7 +369,7 @@ function list_inventory(
     list_gaps && begin
         printstyled("Missing dates\n\n", bold=true, underline=true)
         gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
-            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Info, show_limited=false))
+            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Warn, show_limited=false))
         if !isempty(gaps)
             [println(gap) for gap in gaps]
             println('\n')
