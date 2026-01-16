@@ -369,7 +369,7 @@ function list_inventory(
     list_gaps && begin
         printstyled("Missing dates\n\n", bold=true, underline=true)
         gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
-            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Info, show_limited=false))
+            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Warn, show_limited=false))
         if !isempty(gaps)
             [println(gap) for gap in gaps]
             println('\n')
@@ -1070,14 +1070,14 @@ function print_year_stats(
     dates::Vector{Date},
     finish::Bool = false
 )::Nothing
-    stats = inventory_stats(inventory, dates, by_year=true)
+    stats = inventory_stats(inventory, dates)
     y = finish ? "└─" : "├─"
     d = finish ? " " : "│"
     println("$y $year")
     println("$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: $(stats["downloaded files"])/",
         "$(stats["converted files"]) of $(stats["filecount"]) files – ",
         "$(display_size(stats["downloaded size"]))/$(display_size(stats["converted size"])) ",
-        "of $(display_size(stats["size"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
+        "of $(display_size(stats["total download"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
     finish && println('\n')
     return
 end
