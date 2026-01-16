@@ -355,12 +355,13 @@ function sync!(
         return
     end
     # Log planned downloads
-    stats = inventory_stats(inventory, dates)
+    stats = inventory_stats(inventory, dates; convert)
     logex.with_logger(logger.tee) do
-        @info("$(stats["filecount"] - stats["downloaded files"])/$(stats["filecount"]) files "*
-            "($(display_size(stats["size"] - stats["downloaded size"]))/$(display_size(stats["size"]))) "*
-            "planned for download, $(stats["downloaded files"]) files "*
-            "($(display_size(stats["downloaded size"]))) already downloaded")
+        nfiles = convert ? stats["downloaded files"] + stats["converted files"] : stats["downloaded files"]
+        downloaded_size = convert ? stats["converted size"] + stats["downloaded size"] : stats["downloaded size"]
+        @info("$(stats["filecount"] - nfiles)/$(stats["filecount"]) files "*
+            "($(display_size(stats["total download"] - downloaded_size))/$(display_size(stats["total download"]))) "*
+            "planned for download, $nfiles files ($(display_size(downloaded_size))) already downloaded")
         not = resync ? "" : " not"
         @info "files will$not be updated, if newer files are available, on the server"
     end

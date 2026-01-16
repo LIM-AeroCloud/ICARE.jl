@@ -581,9 +581,9 @@ function save_inventory(inventory::SortedDict, logger::logex.AbstractLogger, t::
     # Return, if no changes occured since time `t`
     inventory["metadata"]["database"]["updated"] > t || return
     # Update statistics
-    stats = inventory_stats(inventory, collect(Date, keys(inventory["dates"])))
+    stats = inventory_stats(inventory)
     inventory["metadata"]["database"]["dates"] = stats["dates"]
-    inventory["metadata"]["database"]["size"] = stats["size"]
+    inventory["metadata"]["database"]["size"] = stats["total download"]
     inventory["metadata"]["database"]["downloaded size"] = stats["downloaded size"]
     inventory["metadata"]["database"]["converted size"] = stats["converted size"]
     inventory["metadata"]["file"]["count"] = stats["filecount"]
@@ -602,70 +602,87 @@ end
 """
     inventory_stats(
         inventory::SortedDict,
-        dates::Vector{Date};
-        by_year::Bool=false
+        dates=keys(inventory["dates"]);
+        convert::Union{Bool,Nothing}=nothing
     ) -> Dict{String,Any}
 
-Calculate statistics for the given `dates` in the `inventory`. If `by_year` is set to `true`,
-`dates` are expected to be of the same year and statistics are calculated only for that year.
+Calculate statistics for the given `dates` in the `inventory`.
+Dates must be an itable of `Date` objects.
+The `convert` option can be used to focus statistics on downloads of original or converted files.
 Return a dictionary with the statistics.
 """
 function inventory_stats(
     inventory::SortedDict,
-    dates::Vector{Date};
-    by_year::Bool=false
+    dates=keys(inventory["dates"]);
+    convert::Union{Bool,Nothing}=nothing
 )::Dict{String,Any}
     # Pre-extract metadata
     newext = inventory["metadata"]["file"]["newext"]
     ext = inventory["metadata"]["file"]["ext"]
     newext_key = "size"*newext
-
-    # Calculate all inventory-based stats in a single pass
-    filecount = 0
-    conversions = 0
-    size_sum = 0
-    for date in dates
-        granules = inventory["dates"][date]
-        filecount += length(granules)
-        for granule_data in values(granules)
-            size_sum += get(granule_data, "size", 0)
-            if haskey(granule_data, newext_key)
-                conversions += 1
-            end
-        end
-    end
-
-    # Scan the local database (restrict to the given year, if by_year is true)
-    db = by_year ? inventory_dates(inventory, none, dates) : inventory_dates(inventory, none)
-    data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
-    num_years = by_year ? 1 : Dates.year.(dates) |> unique |> length
-    # Get file and size statistics
+    # Init file and size statistics
     downloaded_files = 0
     converted_files = 0
     downloaded_size = 0
     converted_size = 0
-    for file in data.files
-        if endswith(file, ext)
-            downloaded_files += 1
-            downloaded_size += filesize(file)
-        elseif !isempty(newext) && endswith(file, newext)
-            converted_files += 1
-            converted_size += filesize(file)
+    filecount = 0
+    conversions = 0
+    size_orig = 0
+    size_conv = 0
+    size_ratio = (original = Int[], converted = Int[])
+    # Scan the local database (restrict to the given year, if by_year is true)
+    db = inventory_dates(inventory, none, dates)
+    data = localscan(db, inventory["metadata"]["local"]["path"], intersect)
+    # Calculate inventory-based stats
+    for date in dates
+        for (file, granule_data) in inventory["dates"][date]
+            # Count total files and conversions in database
+            filecount += 1
+            haskey(granule_data, newext_key) && (conversions += 1)
+            # Check local file counts and sizes
+            origsize = get(granule_data, "size", 0)
+            newsize = get(granule_data, newext_key, 0)
+            norig = file*ext in basename.(data.files) ? 1 : 0
+            nconv = file*newext in basename.(data.files) ? 1 : 0
+            if nconv > 0 && newsize > 0 && convert !== false
+                # Count current local converted files and sizes
+                converted_files += 1
+                converted_size += newsize
+            end
+            if newsize > 0 && convert !== false
+                # Count available conversion data (including data for the compression ratio)
+                size_conv += newsize
+                push!(size_ratio.converted, newsize)
+                push!(size_ratio.original, origsize)
+            end
+            if norig > 0 && (convert !== true || nconv == 0)
+                downloaded_files += 1
+                downloaded_size += origsize
+            end
+            if convert !== true || nconv == 0
+                size_orig += origsize
+            end
         end
     end
-
-    # Build stats dict
-    return Dict{String,Any}(
+    # Calculate total size and ratio of converted vs original files
+    total_size = convert !== true ? size_orig : size_conv + size_orig
+    total_conv = isnothing(convert) ? size_conv : NaN
+    ratio = isempty(size_ratio.original) ? 1.0 : sum(size_ratio.converted)/sum(size_ratio.original)
+    # Return statistics as a dictionary
+    return Dict(
         "dates" => length(dates),
-        "filecount" => filecount,
-        "conversions" => conversions,
-        "size" => size_sum,
-        "converted size" => converted_size,
         "downloaded files" => downloaded_files,
         "converted files" => converted_files,
-        "downloaded size" => downloaded_size
+        "downloaded size" => downloaded_size,
+        "converted size" => converted_size,
+        "filecount" => filecount,
+        "conversions" => conversions,
+        "total download" => total_size,
+        "total converted" => total_conv,
+        "ratio" => ratio
     )
 end
+
 
 
 ## Functions for validations

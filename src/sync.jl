@@ -1070,14 +1070,14 @@ function print_year_stats(
     dates::Vector{Date},
     finish::Bool = false
 )::Nothing
-    stats = inventory_stats(inventory, dates, by_year=true)
+    stats = inventory_stats(inventory, dates)
     y = finish ? "└─" : "├─"
     d = finish ? " " : "│"
     println("$y $year")
     println("$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: $(stats["downloaded files"])/",
         "$(stats["converted files"]) of $(stats["filecount"]) files – ",
         "$(display_size(stats["downloaded size"]))/$(display_size(stats["converted size"])) ",
-        "of $(display_size(stats["size"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
+        "of $(display_size(stats["total download"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
     finish && println('\n')
     return
 end
