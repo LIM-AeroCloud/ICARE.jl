@@ -93,18 +93,10 @@ function load_inventory!(
     for (key, value) in YAML.load_file(file, dicttype=SortedDict)
         inventory[key] = value
     end
+    # Convert version to version number
+    inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     # Reorder database metadata entries in a more logical order
-    inventory["metadata"]["database"] = OrderedDict(
-        "dates" => inventory["metadata"]["database"]["dates"],
-        "missing" => inventory["metadata"]["database"]["missing"],
-        "size" => inventory["metadata"]["database"]["size"],
-        "downloaded size" => inventory["metadata"]["database"]["downloaded size"],
-        "converted size" => inventory["metadata"]["database"]["converted size"],
-        "start" => inventory["metadata"]["database"]["start"],
-        "stop" => inventory["metadata"]["database"]["stop"],
-        "created" => inventory["metadata"]["database"]["created"],
-        "updated" => inventory["metadata"]["database"]["updated"]
-    )
+    inventory["metadata"]["database"] = inventory_database(inventory)
     inventory["metadata"]["file"] = OrderedDict(
         "count" => inventory["metadata"]["file"]["count"],
         "downloads" => inventory["metadata"]["file"]["downloads"],
@@ -117,14 +109,46 @@ function load_inventory!(
         "path" => inventory["metadata"]["remote"]["path"],
         "root" => inventory["metadata"]["remote"]["root"]
     )
-    # Convert version to version number
-    inventory["metadata"]["version"] = VersionNumber(inventory["metadata"]["version"])
     # Note: In the future, add migrations here for older inventory versions
     # Log success and return inventory
     logex.with_logger(logger) do
         @info "inventory loaded from '$file'"
     end
     return inventory
+end
+
+
+"""
+    inventory_database(inventory::SortedDict) -> OrderedDict
+
+Load the database metadata from the `inventory` and convert it to the latest format if needed.
+"""
+function inventory_database(
+    inventory::SortedDict
+)::OrderedDict
+    db = inventory["metadata"]["database"]
+    dbsize = if inventory["metadata"]["version"] < v"2.0.0"
+        @info "updating inventory format from v1 to v2.0.0"
+        inventory["metadata"]["version"] = v"2.0.0"
+        stats = inventory_stats(inventory)
+        OrderedDict(
+            "total" => db["size"],
+            "downloaded" => db["downloaded size"],
+            "converted" => db["converted size"],
+            "compression-ratio" => stats["ratio"]
+        )
+    else
+        db["size"]
+    end
+    return OrderedDict(
+        "dates" => db["dates"],
+        "missing" => db["missing"],
+        "start" => db["start"],
+        "stop" => db["stop"],
+        "size" => dbsize,
+        "created" => db["created"],
+        "updated" => db["updated"]
+    )
 end
 
 
@@ -156,11 +180,14 @@ function new_inventory!(
         "database" => OrderedDict{String,Any}(
             "dates" => 0,
             "missing" => 0,
-            "size" => 0,
-            "downloaded size" => 0,
-            "converted size" => 0,
             "start" => Date(9999),
             "stop" => Date(0),
+            "size" => OrderedDict(
+                "total" => 0,
+                "downloaded" => 0,
+                "converted" => 0,
+                "compression-ratio" => 0.0
+            ),
             "created" => Dates.now(),
             "updated" => Dates.now()
         ),
@@ -180,7 +207,7 @@ function new_inventory!(
             "path" => icare.uri.path,
             "root" => dirname(icare)
         ),
-        "version" => v"1.0.0"
+        "version" => v"2.0.0"
     )
     return
 end
@@ -583,9 +610,10 @@ function save_inventory(inventory::SortedDict, logger::logex.AbstractLogger, t::
     # Update statistics
     stats = inventory_stats(inventory)
     inventory["metadata"]["database"]["dates"] = stats["dates"]
-    inventory["metadata"]["database"]["size"] = stats["total download"]
-    inventory["metadata"]["database"]["downloaded size"] = stats["downloaded size"]
-    inventory["metadata"]["database"]["converted size"] = stats["converted size"]
+    inventory["metadata"]["database"]["size"]["total"] = stats["size"]
+    inventory["metadata"]["database"]["size"]["downloaded"] = stats["downloaded size"]
+    inventory["metadata"]["database"]["size"]["converted"] = stats["converted size"]
+    inventory["metadata"]["database"]["size"]["compression-ratio"] = stats["ratio"]
     inventory["metadata"]["file"]["count"] = stats["filecount"]
     inventory["metadata"]["file"]["downloads"] = stats["downloaded files"]
     inventory["metadata"]["file"]["conversions"] = stats["converted files"]

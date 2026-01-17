@@ -17,6 +17,10 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - `global_logger` is now formatted during package init ([#33])
 - New Changelog for the inventory in the documentation as separate Changelog from this one
 
+### Fixed
+
+- Corrected calculation of inventory stats that was showing a wrong download intent ([#44])
+
 ### Changed
 
 - **Breaking:** Refine logging in `load_inventory` ([#35]). Rather than defining an additional
@@ -45,6 +49,12 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
     of the inventory ([#28])
   - Filter files with `!isdir` rather than `isfile` to be sure to not miss any path objects like
     symlinks, which will now be listed under files ([#28])
+- Changed format of the inventory metadata, added a compression ratio,
+  see inventory changelog in the
+  [documentation](https://lim-aerocloud.github.io/ICARE.jl/dev/inventory.html#Inventory-Changelog),
+  added a migration routine that will convert old inventories to the new format ([#38])
+- Updated the output of `list_inventory` to consider the new possibilities with the compression
+  ratio ([#38])
 
 ### Removed
 
@@ -254,4 +264,6 @@ prevent LibCurl error 9
 [#33]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/33
 [#34]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/34
 [#35]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/35
+[#38]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/38
+[#44]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/44
 [#46]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/46

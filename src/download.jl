@@ -134,24 +134,24 @@ function sftp_download(
     icare = icare_connect(user, password, remoteroot, product, logger.tee)
     # ℹ Make inventory available for catch block
     inventory = SortedDict()
-        # Get available server dates
-        try
-            product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
-            logex.with_logger(logger.file) do
-                te = Dates.now()
-                @info "setup of database completed in $(Dates.canonicalize(te - logger.start))) @$te"
-            end
-        catch error
-            logex.with_logger(logger.tee) do
-                @error "failed to load local inventory" exception=(error, catch_backtrace())
-            end
-            data_gaps!(inventory)
-            close(logger.file.logger.stream)
-            return inventory
-        finally
-            # Ensure that inventory is saved even in case of errors
-            save_inventory(inventory, logger.tee, logger.start)
+    # Get available server dates
+    try
+        product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
+        logex.with_logger(logger.file) do
+            te = Dates.now()
+            @info "setup of database completed in $(Dates.canonicalize(te - logger.start))) @$te"
         end
+    catch error
+        logex.with_logger(logger.tee) do
+            @error "failed to load local inventory" exception=(error, catch_backtrace())
+        end
+        data_gaps!(inventory)
+        close(logger.file.logger.stream)
+        return inventory
+    finally
+        # Ensure that inventory is saved even in case of errors
+        save_inventory(inventory, logger.tee, logger.start)
+    end
     # Log download session
     t0 = Dates.now()
     @info("starting up to $(Threads.nthreads()) parallel downloads\n"*
