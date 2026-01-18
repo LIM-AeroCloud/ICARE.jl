@@ -436,7 +436,7 @@ function remotefiles!(
     date in inventory["gaps"] && return false
     haskey(inventory["dates"], date) && return false
     # Get stats of remote files (without the current and parent folders)
-    stats = SFTP.statscan(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
+    stats = remotestats(icare, Dates.format(date, "yyyy/yyyy_mm_dd"))
     granules = SortedDict{String,SortedDict}()
     for stat in stats
         desc = splitext(stat.desc)[1]
@@ -455,6 +455,33 @@ function remotefiles!(
     # Only save complete dates to ensure no loss of data during crashes
     inventory["dates"][date] = granules
     return true
+end
+
+
+"""
+    remotestats(icare::SFTP.Client, path::AbstractString) -> Vector{SFTP.StatStruct}
+
+Recursively scan the `path` on the `icare` server and return the stats of all containing
+path objects following symlinks.
+"""
+function remotestats(icare::SFTP.Client, path::AbstractString)::Vector{SFTP.StatStruct}
+    # Setup set for symlinks to follow and scan current path
+    paths = Set{String}()
+    scan = SFTP.statscan(icare, path)
+    # Loop over paths and separate symlinks from real paths
+    for i = length(scan):-1:1
+        path = scan[i]
+        if islink(path)
+            src, dst = split(path.root, "->") .|> strip
+            push!(paths, dst)
+            deleteat!(scan, i)
+        end
+    end
+    # Recursively check symlink targets
+    for path in paths
+        union!(scan, remotestats(icare, path))
+    end
+    return scan
 end
 
 
@@ -676,7 +703,7 @@ function inventory_stats(
     # Pre-extract metadata
     newext = inventory["metadata"]["file"]["newext"]
     ext = inventory["metadata"]["file"]["ext"]
-    newext_key = "size"*newext
+    newext_key = isempty(newext) ? "" : "size"*newext
     # Init file and size statistics
     downloaded_files = 0
     converted_files = 0
