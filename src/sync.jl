@@ -51,7 +51,7 @@ function clean!(
 )::SortedDict
     # Load the inventory from the yaml in the given root
     logger = init_logging(logfile, root, loglevel)
-    inventory = load_inventory(root, logger.tee)
+    inventory = load_inventory(root, logger.tee, save_migrations=false)
     # Call the clean method for the inventory
     logex.with_logger(logger.tee) do
         @info "analyse inventory and local database for cleaning"
@@ -358,14 +358,27 @@ function list_inventory(
     dates = collect(Date, keys(inventory["dates"]))
     years = Dates.year.(dates) |> unique
     date_range = [findall(d -> Dates.year(d) == year, dates) for year in years]
+    println('\n')
     list_dates && begin
         printstyled("Database overview (with path tree)\n\n", bold=true, underline=true)
-        println(inventory["metadata"]["remote"]["product"])
+        @info "inventory version: $(inventory["metadata"]["version"])"
+        println('\n', inventory["metadata"]["remote"]["product"])
         for d = 1:length(date_range) - 1
             print_year_stats(inventory, years[d], dates[date_range[d]])
         end
         print_year_stats(inventory, years[end], dates[date_range[end]], true)
     end
+    nconv, sconv = isempty(inventory["metadata"]["file"]["newext"]) ? ("", "") :
+        ("/converted", " — converted/estimated total size")
+    @info "stats show downloaded$nconv file count – downloaded/available size$sconv"*
+        " + respective percentages in parentheses"
+    if !isempty(inventory["metadata"]["file"]["newext"])
+        @info "total converted size is estimated based on an average compression of "*
+            "$(round(100(1 - inventory["metadata"]["database"]["size"]["compression-ratio"]), digits=2))%"
+        @info "files are converted from $(inventory["metadata"]["file"]["ext"]) "*
+            "to $(inventory["metadata"]["file"]["newext"])"
+    end
+    println('\n')
     list_gaps && begin
         printstyled("Missing dates\n\n", bold=true, underline=true)
         gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
@@ -388,16 +401,24 @@ function list_inventory(
         println(join(extras, "\n├─ ", "\n└─ "), "\n\n")
     end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
-    println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
+    println("date range:             ", inventory["metadata"]["database"]["start"], " ... ",
         inventory["metadata"]["database"]["stop"])
-    println("dates:         ", length(dates))
-    println("missing dates: ", inventory["metadata"]["database"]["missing"])
-    println("granules:      ", inventory["metadata"]["file"]["downloads"],"/",
-        inventory["metadata"]["file"]["conversions"], " of ", inventory["metadata"]["file"]["count"])
-    println("size:          ", display_size(inventory["metadata"]["database"]["downloaded size"]),
-        "/", display_size(inventory["metadata"]["database"]["converted size"]), " of ",
-        display_size(inventory["metadata"]["database"]["size"]), '\n')
-    @info "file sizes are displayed as <downloads in original format>/<converted size> of <total size in original format>"
+    println("dates:                  ", length(dates))
+    println("missing dates:          ", inventory["metadata"]["database"]["missing"])
+    expl, count = isempty(inventory["metadata"]["file"]["newext"]) ? ("                ", "") :
+        (" (orig./conv.): ", "/$(inventory["metadata"]["file"]["conversions"])")
+    println("granules", expl, inventory["metadata"]["file"]["downloads"], count,
+        " of ", inventory["metadata"]["file"]["count"])
+    println("download size:          ", display_size(inventory["metadata"]["database"]["size"]["downloaded"]),
+        " of ", display_size(inventory["metadata"]["database"]["size"]["total"]))
+    isempty(inventory["metadata"]["file"]["newext"]) || println("converted size:         ",
+        display_size(inventory["metadata"]["database"]["size"]["converted"]), " of ",
+        display_size(round(Int,
+            inventory["metadata"]["database"]["size"]["total"] *
+            inventory["metadata"]["database"]["size"]["compression-ratio"])))
+    conv = isempty(inventory["metadata"]["file"]["newext"]) ? "none" :
+        "$(inventory["metadata"]["file"]["ext"]) > $(inventory["metadata"]["file"]["newext"])"
+    println("conversion:             ", conv)
 end
 
 
@@ -1070,14 +1091,41 @@ function print_year_stats(
     dates::Vector{Date},
     finish::Bool = false
 )::Nothing
+    # Get statistics
     stats = inventory_stats(inventory, dates)
+    filecount = stats["filecount"]
+    pc_downloads, pc_conversions = if filecount > 0
+        round(stats["downloaded files"] / filecount * 100, digits=2),
+        round(stats["converted files"] / filecount * 100, digits=2)
+    else
+        0.0, 0.0
+    end
+    ratio = inventory["metadata"]["database"]["size"]["compression-ratio"]
+    total_download = stats["total download"]
+    converted_size = pc_conversions == 100 ?
+        stats["converted size"] : round(Int, total_download * ratio)
+    pc_downloaded_size = total_download > 0 ?
+        round(stats["downloaded size"] / total_download * 100, digits=2) : 0.0
+    pc_converted_size = converted_size > 0 ?
+        round(stats["converted size"] / converted_size * 100, digits=2) : 0.0
+    # Define links in file tree
     y = finish ? "└─" : "├─"
     d = finish ? " " : "│"
+    # Define and print year stats
+    nfiles, pc_files = if isempty(inventory["metadata"]["file"]["newext"])
+        "", ""
+    else
+        "/$(stats["converted files"])", "/$pc_conversions%"
+    end
     println("$y $year")
-    println("$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: $(stats["downloaded files"])/",
-        "$(stats["converted files"]) of $(stats["filecount"]) files – ",
-        "$(display_size(stats["downloaded size"]))/$(display_size(stats["converted size"])) ",
-        "of $(display_size(stats["total download"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
-    finish && println('\n')
+    yearstats = "$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: "*
+        "$(stats["downloaded files"])$nfiles out of $(stats["filecount"]) files "*
+        "($pc_downloads%$pc_files) – $(display_size(stats["downloaded size"]))/"*
+        "$(display_size(total_download)) ($pc_downloaded_size%)"
+    isempty(inventory["metadata"]["file"]["newext"]) || (yearstats *=
+        " — $(display_size(stats["converted size"]))/$(display_size(converted_size)) ($pc_converted_size%)")
+    yearstats *= " ... $(Dates.format(dates[end], "yyyy_mm_dd"))"
+    println(yearstats)
+    finish && println()
     return
 end

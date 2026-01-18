@@ -12,10 +12,16 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
   wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35])
   - the new logger suppresses module, file, and line information and expands the display of arrays
-- previous log files are now saved to a `.inventory.logs` file and remembered for clean-up. This
-  allows cleaning of log files outside the product folder (**breaking!**, [#28]).
+- Previous log files are now saved to a `.inventory.logs` file and remembered for clean-up. This
+  allows cleaning of log files outside the product folder ([#28]).
 - `global_logger` is now formatted during package init ([#33])
 - New Changelog for the inventory in the documentation as separate Changelog from this one
+- Add kwarg `save_migrations` to `load_inventory` to save any inventory migrations when
+  `load_inventory` is called by default ([#38])
+
+### Fixed
+
+- Corrected calculation of inventory stats that was showing a wrong download intent ([#44])
 
 ### Changed
 
@@ -25,7 +31,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   and file, use e.g. `TeeLogger` from
   [LoggingExtras](https://github.com/JuliaLogging/LoggingExtras.jl?tab=readme-ov-file).
   This allows logging in wrapper functions like `convert_inventory` for `convert_inventory!`.
-- **Breaking:** change function names of `convert`/`convert!` to `convert_inventory[!]` to
+- **Breaking:** Change function names of `convert`/`convert!` to `convert_inventory[!]` to
   avoid type piracy ([#35])
 - All API functions now accept `AbstractString` instead of the stricter `String`
 - Improved Logging ([#35])
@@ -45,6 +51,12 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
     of the inventory ([#28])
   - Filter files with `!isdir` rather than `isfile` to be sure to not miss any path objects like
     symlinks, which will now be listed under files ([#28])
+- Change format of the inventory metadata, added a compression ratio,
+  see inventory changelog in the
+  [documentation](https://lim-aerocloud.github.io/ICARE.jl/dev/inventory.html#Inventory-Changelog),
+  added a migration routine that will convert old inventories to the new format ([#38])
+- Update the output of `list_inventory` to consider the new possibilities with the compression
+  ratio ([#38])
 
 ### Removed
 
@@ -254,4 +266,6 @@ prevent LibCurl error 9
 [#33]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/33
 [#34]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/34
 [#35]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/35
+[#38]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/38
+[#44]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/44
 [#46]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/46
