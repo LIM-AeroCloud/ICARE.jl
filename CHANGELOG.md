@@ -12,8 +12,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
   wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35])
   - the new logger suppresses module, file, and line information and expands the display of arrays
-- Previous log files are now saved to a `.inventory.logs` file and remembered for clean-up. This
-  allows cleaning of log files outside the product folder ([#28]).
+- **Breaking:** Previous log files are now saved to a `.inventory.logs` file and remembered
+  for clean-up. This allows cleaning of log files outside the product folder ([#28]).
 - `global_logger` is now formatted during package init ([#33])
 - New Changelog for the inventory in the documentation as separate Changelog from this one
 - Add kwarg `save_migrations` to `load_inventory` to save any inventory migrations when
@@ -22,6 +22,8 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 ### Fixed
 
 - Corrected calculation of inventory stats that was showing a wrong download intent ([#44])
+- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
+  Now symlinks are followed and the correct stats are derived ([#42]).
 
 ### Changed
 
@@ -267,5 +269,6 @@ prevent LibCurl error 9
 [#34]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/34
 [#35]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/35
 [#38]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/38
+[#42]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/42
 [#44]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/44
 [#46]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/46
