@@ -30,7 +30,7 @@ function convert_inventory(
     logex.with_logger(logger.tee) do
         @debug "parameters" root sizecheck loglevel
     end
-    inventory = load_inventory(root, logger.tee, save_updates=false)
+    inventory = load_inventory(root, logger.tee, save_migrations=false)
     # Call the conversion method for the inventory
     _convert!(inventory, sizecheck, logger)
 end

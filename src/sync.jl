@@ -51,7 +51,7 @@ function clean!(
 )::SortedDict
     # Load the inventory from the yaml in the given root
     logger = init_logging(logfile, root, loglevel)
-    inventory = load_inventory(root, logger.tee, save_updates=false)
+    inventory = load_inventory(root, logger.tee, save_migrations=false)
     # Call the clean method for the inventory
     logex.with_logger(logger.tee) do
         @info "analyse inventory and local database for cleaning"
@@ -1093,14 +1093,21 @@ function print_year_stats(
 )::Nothing
     # Get statistics
     stats = inventory_stats(inventory, dates)
-    pc_downloads = round(stats["downloaded files"] / stats["filecount"] * 100, digits=2)
-    pc_conversions = round(stats["converted files"] / stats["filecount"] * 100, digits=2)
-    # ℹ For a large enough fraction use ratio of current year, otherwise overall ratio
+    filecount = stats["filecount"]
+    pc_downloads, pc_conversions = if filecount > 0
+        round(stats["downloaded files"] / filecount * 100, digits=2),
+        round(stats["converted files"] / filecount * 100, digits=2)
+    else
+        0.0, 0.0
+    end
     ratio = inventory["metadata"]["database"]["size"]["compression-ratio"]
+    total_download = stats["total download"]
     converted_size = pc_conversions == 100 ?
-        stats["converted size"] : round(Int, stats["total download"] * ratio)
-    pc_downloaded_size = round(stats["downloaded size"] / stats["total download"] * 100, digits=2)
-    pc_converted_size = round(stats["converted size"] / converted_size * 100, digits=2)
+        stats["converted size"] : round(Int, total_download * ratio)
+    pc_downloaded_size = total_download > 0 ?
+        round(stats["downloaded size"] / total_download * 100, digits=2) : 0.0
+    pc_converted_size = converted_size > 0 ?
+        round(stats["converted size"] / converted_size * 100, digits=2) : 0.0
     # Define links in file tree
     y = finish ? "└─" : "├─"
     d = finish ? " " : "│"
@@ -1114,7 +1121,7 @@ function print_year_stats(
     yearstats = "$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: "*
         "$(stats["downloaded files"])$nfiles out of $(stats["filecount"]) files "*
         "($pc_downloads%$pc_files) – $(display_size(stats["downloaded size"]))/"*
-        "$(display_size(stats["total download"])) ($pc_downloaded_size%)"
+        "$(display_size(total_download)) ($pc_downloaded_size%)"
     isempty(inventory["metadata"]["file"]["newext"]) || (yearstats *=
         " — $(display_size(stats["converted size"]))/$(display_size(converted_size)) ($pc_converted_size%)")
     yearstats *= " ... $(Dates.format(dates[end], "yyyy_mm_dd"))"

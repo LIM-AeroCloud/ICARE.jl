@@ -130,7 +130,7 @@ inventory.
 - Made `size` a sub-dictionary with entries `total`, `downloaded`, and `converted` instead of
   the entries `"downloaded size"` and `"converted size"`. This avoids quoted multi-word keys 
   in the inventory.
-- Added entry `compression_ratio` to `inventory["metadata"]["database"]["size"]` ([#38])
+- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38])
 
 ## [v1.0.0] - 2025-12-27
 

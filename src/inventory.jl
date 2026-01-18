@@ -5,13 +5,13 @@
     load_inventory(
         path::AbstractString,
         logger::logex.AbstractLogger=logex.global_logger();
-        save_updates::Bool=true
+        save_migrations::Bool=true
     ) -> SortedDict
 
 Load the database inventory from the `path` to the product folder (and a hidden yaml file)
 to a `SortedDict`, which can be processed by other ICARE functions. By default, older versions
 of the inventory are upgraded and saved to the `.inventory.yaml`. Updating the inventory file
-can be prevented by setting the kwarg `save_updates` to `false`.
+can be prevented by setting the kwarg `save_migrations` to `false`.
 
 If a `logger` is provided, events are logged to it in addition to the global logger
 (typically the console).
@@ -21,15 +21,15 @@ See also: [`list_inventory`](@ref)
 function load_inventory(
     path::AbstractString,
     logger::logex.AbstractLogger=logex.global_logger();
-    save_updates::Bool=true
+    save_migrations::Bool=true
 )::SortedDict
     # Init inventory and define inventory file
     inventory = SortedDict{String,Any}()
     file = joinpath(path, ".inventory.yaml")
     isfile(file) || throw(ArgumentError(string("no inventory found in '$path', ",
         "check that the path to the product folder exists and that the inventory has been created")))
-    # Set start time, if migration need to be changed (or enforce no save)
-    t0 = save_updates ? Dates.now() : DateTime(9999)
+    # Set start time, if migration needs to be saved (or enforce no save)
+    t0 = save_migrations ? Dates.now() : DateTime(9999)
     # Load inventory from yaml and optionally save migrations
     load_inventory!(inventory, file, logger)
     save_inventory(inventory, logger, t0)
@@ -146,12 +146,13 @@ function inventory_database(
     db = inventory["metadata"]["database"]
     # Load database metadata, migrate if needed
     dbsize = if inventory["metadata"]["version"] < v"2.0.0"
+        # Get new relevant stats and migrate database
+        stats = inventory_stats(inventory)
         # Update version after migration and set new updated date
         @info "updating inventory format from v1 to v2.0.0"
         inventory["metadata"]["version"] = v"2.0.0"
         db["updated"] = Dates.now()
-        # Get new relevant stats and migrate database
-        stats = inventory_stats(inventory)
+        # Save re-arranged data
         OrderedDict(
             "total" => db["size"],
             "downloaded" => db["downloaded size"],
