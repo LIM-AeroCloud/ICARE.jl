@@ -470,16 +470,20 @@ function remotestats(icare::SFTP.Client, path::AbstractString)::Vector{SFTP.Stat
     scan = SFTP.statscan(icare, path)
     # Loop over paths and separate symlinks from real paths
     for i = length(scan):-1:1
-        path = scan[i]
-        if islink(path)
-            src, dst = split(path.root, "->") .|> strip
-            push!(paths, dst)
+        file = scan[i]
+        if islink(file)
+            link_parts = split(file.root, "->") .|> strip
+            if length(link_parts) != 2
+                @error "could not parse symlink '$(file.root)', skip processing"
+                continue
+            end
+            push!(paths, link_parts[2])
             deleteat!(scan, i)
         end
     end
     # Recursively check symlink targets
-    for path in paths
-        union!(scan, remotestats(icare, path))
+    for link_target in paths
+        union!(scan, remotestats(icare, link_target))
     end
     return scan
 end
