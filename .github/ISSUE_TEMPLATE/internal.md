@@ -11,12 +11,13 @@ Description
 ------------
 
 
+
 Definition of Done
 ------------------
 
 - [ ] All ACs fulfilled
 - [ ] Feature tested (unit tests written for new features or bugs)
-- [ ] Documentation updated
+- Documentation updated
   - [ ] in-code comments and docstrings
   - [ ] Documeter pages
   - [ ] Changelog was updated and docs were build
@@ -25,7 +26,6 @@ Definition of Done
   - [ ] A PR was made and reviewed for any new code
   - [ ] All CI checks passed
   - [ ] Related feature branch(es) merged and deleted without conflict
-
 
 Acceptance Criteria
 --------------------

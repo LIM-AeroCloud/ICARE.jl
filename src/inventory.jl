@@ -283,9 +283,7 @@ function filter_years!(
         inventory["metadata"]["file"]["conversions"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
-        inventory["metadata"]["database"]["size"] = 0
-        inventory["metadata"]["database"]["downloaded size"] = 0
-        inventory["metadata"]["database"]["converted size"] = 0
+        empty!(inventory["metadata"]["database"]["size"])
         inventory["metadata"]["database"]["start"] = Date(9999)
         inventory["metadata"]["database"]["stop"] = Date(0)
     end
@@ -514,7 +512,7 @@ function update_stats!(
     # Skip, if already updated at the beginning
     resync && return
     # Get stats of all files for the given date
-    stats = SFTP.statscan(icare, file.dir.src)
+    stats = remotestats(icare, file.dir.src)
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
     obsolete = setdiff(keys(inventory["dates"][file.date]), names)
