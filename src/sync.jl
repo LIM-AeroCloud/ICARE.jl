@@ -51,7 +51,7 @@ function clean!(
 )::SortedDict
     # Load the inventory from the yaml in the given root
     logger = init_logging(logfile, root, loglevel)
-    inventory = load_inventory(root, logger.tee)
+    inventory = load_inventory(root, logger.tee, save_updates=false)
     # Call the clean method for the inventory
     logex.with_logger(logger.tee) do
         @info "analyse inventory and local database for cleaning"
