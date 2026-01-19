@@ -413,15 +413,17 @@ function newext!(inventory::SortedDict, convert::Union{Nothing,Bool})::Bool
     end
     if isempty(new_ext)
         # Save extension for conversion in inventory, if not done before
-        inventory["metadata"]["file"]["newext"] = target
+        inventory["metadata"]["file"]["newext"] = new_ext = target
     elseif target ≠ new_ext
         # Check previous extensions are consistent with current conversions
         throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
             "(current: $new_ext, target: $target)"))
     end
     # Force convert to a bool, setting to true for standard conversions
-    isnothing(convert) && (convert = isempty(new_ext) ? false : true)
-    isnothing(convert) && @info "convert option set" convert
+    if isnothing(convert)
+        convert = isempty(new_ext) ? false : true
+        @info "convert option set" convert
+    end
     return convert
 end
 
