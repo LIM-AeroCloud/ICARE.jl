@@ -288,8 +288,8 @@ end
 
 
 """
-    newext() -> String
+    newext(ext::AbstractString) -> String
 
-Return the extension of the converted file.
+Return the extension of the converted file for the given original `ext`ension or else an empty string.
 """
-newext()::String = ".h5"
+newext(ext::AbstractString)::String = ext == ".hdf" ? ".h5" : ""

@@ -11,6 +11,7 @@ Description
 ------------
 
 
+
 Definition of Done
 ------------------
 
@@ -18,14 +19,13 @@ Definition of Done
 - [ ] Feature tested (unit tests written for new features or bugs)
 - [ ] Documentation updated
   - [ ] in-code comments and docstrings
-  - [ ] Documeter pages
+  - [ ] Documenter pages
   - [ ] Changelog was updated and docs were build
-- The Git workflow was followed
+- [ ] The Git workflow was followed
   - [ ] Branches and PRs are linked to this ticket
   - [ ] A PR was made and reviewed for any new code
   - [ ] All CI checks passed
   - [ ] Related feature branch(es) merged and deleted without conflict
-
 
 Acceptance Criteria
 --------------------

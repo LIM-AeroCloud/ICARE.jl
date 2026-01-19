@@ -22,6 +22,9 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - New Changelog for the inventory in the documentation as separate Changelog from this one
 - Add kwarg `save_migrations` to `load_inventory` to save any inventory migrations when
   `load_inventory` is called by default ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
+- Add new automatic detection for conversion during download. Now, `.hdf` files are converted to
+  `.h5`, otherwise conversion is switched off. The `convert` flag in `sftp_download` can still be
+  used to enforce conversion to be switched on/off.
 
 ### Fixed
 

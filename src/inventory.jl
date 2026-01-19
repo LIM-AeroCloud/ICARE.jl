@@ -47,10 +47,10 @@ end
         root::String,
         product::String,
         daterange::@NamedTuple{start::Date,stop::Date},
-        convert::Bool,
+        convert::Union{Nothing,Bool},
         resync::Bool,
         logger::Logger
-    )
+    ) -> Bool
 
 Initiate the inventory of `icare` server-side data files for the `product` in the `remoteroot`
 directory. Either read the database from the yaml file in the `product` folder or initialise
@@ -62,6 +62,8 @@ inventory is updated and a warning is issued.
 The target file extension for converted files is set based on the `convert` option.
 The `logger` parameter should be a NamedTuple with `file` and `tee` logger fields.
 Updates are logged to the screen and the log file with `logger`.
+The function returns the updated `convert` option as `Bool`, for `nothing` standard conversions
+are set to `true`, otherwise no conversion is performed.
 """
 function product_database!(
     icare::SFTP.Client,
@@ -69,10 +71,10 @@ function product_database!(
     root::String,
     product::String,
     daterange::@NamedTuple{start::Date,stop::Date},
-    convert::Bool,
+    convert::Union{Nothing,Bool},
     resync::Bool,
     logger::Logger
-)::Nothing
+)::Bool
     # Defining inventory source file and available years on server
     database = joinpath(root, product, ".inventory.yaml")
     years = parse.(Int, readdir(icare))
@@ -283,9 +285,7 @@ function filter_years!(
         inventory["metadata"]["file"]["conversions"] = 0
         inventory["metadata"]["database"]["dates"] = 0
         inventory["metadata"]["database"]["missing"] = 0
-        inventory["metadata"]["database"]["size"] = 0
-        inventory["metadata"]["database"]["downloaded size"] = 0
-        inventory["metadata"]["database"]["converted size"] = 0
+        empty!(inventory["metadata"]["database"]["size"])
         inventory["metadata"]["database"]["start"] = Date(9999)
         inventory["metadata"]["database"]["stop"] = Date(0)
     end
@@ -302,23 +302,25 @@ end
         years::Vector{Int},
         daterange::@NamedTuple{start::Date,stop::Date},
         resync::Bool,
-        convert::Bool,
+        convert::Union{Nothing,Bool},
         logger::logex.AbstractLogger
-    )
+    ) -> Bool
 
 Sync the `inventory` with the `icare` server for the given `daterange` and `years`.
 Consider conversion to a new file format based on the `convert` option.
 Ensure converted file sizes are not lost during `resync`. Log events to `logger`.
+The function returns the updated `convert` option as `Bool`, for `nothing` standard conversions
+are set to `true`, otherwise no conversion is performed.
 """
 function sync_database!(
     icare::SFTP.Client,
     inventory::SortedDict,
     years::Vector{Int},
     daterange::@NamedTuple{start::Date,stop::Date},
-    convert::Bool,
+    convert::Union{Nothing,Bool},
     resync::Bool,
     logger::logex.AbstractLogger
-)::Nothing
+)::Bool
     # Monitor updates
     updated = false
     # Define views on metadata and save current date range
@@ -343,7 +345,7 @@ function sync_database!(
     end
     # Save extension types to inventory
     ext!(icare, inventory)
-    newext!(inventory, convert)
+    convert = newext!(inventory, convert)
     # Delete possible temporary inventory data
     delete!(inventory, "temp")
     # Ignore flagged granules
@@ -359,13 +361,13 @@ function sync_database!(
     end
     # Save data gaps to inventory
     data_gaps!(inventory)
-    gaps = combine_gaps(inventory, daterange, logger)
+    combine_gaps(inventory, daterange, logger)
 
     updated && logex.with_logger(logger) do
         @info "inventory synced with ICARE server in date range $(database["start"]) – $(database["stop"])"
         inventory["metadata"]["database"]["updated"] = Dates.now()
     end
-    return
+    return convert
 end
 
 
@@ -387,30 +389,42 @@ end
 
 
 """
-    newext!(inventory::SortedDict, convert::Bool)
+    newext!(inventory::SortedDict, convert::Union{Nothing,Bool}) -> Bool
 
 Check and update the converted file extension in the inventory.
 If `convert` is `false`, the target extension is set to the original file extension.
+The function returns the updated `convert` option as `Bool`.
 """
-function newext!(inventory::SortedDict, convert::Bool)::Nothing
+function newext!(inventory::SortedDict, convert::Union{Nothing,Bool})::Bool
     # Ignore newext, if no conversion is requested
-    convert || return
+    convert === false && return convert
     # Definitions
-    target = newext()
     ext = inventory["metadata"]["file"]["ext"]
+    target = newext(ext)
     new_ext = inventory["metadata"]["file"]["newext"]
-    # Return, if target is identical to original extension
-    target == ext && return
+    # Set conversion to false and return, if target is identical to original extension
+    if target == ext
+        if isempty(ext)
+            @warn "file type could not be determined; no conversion available"
+        else
+            @warn "conversion to the same file type is not allowed; switching off conversion" ext
+        end
+        return false
+    end
     if isempty(new_ext)
         # Save extension for conversion in inventory, if not done before
-        target == ext && throw(ArgumentError("conversion to the same file type ($ext) is not allowed"))
-        inventory["metadata"]["file"]["newext"] = target
+        inventory["metadata"]["file"]["newext"] = new_ext = target
     elseif target ≠ new_ext
         # Check previous extensions are consistent with current conversions
         throw(ArgumentError("only conversion to 1 new file type per inventory are allowed "*
             "(current: $new_ext, target: $target)"))
     end
-    return
+    # Force convert to a bool, setting to true for standard conversions
+    if isnothing(convert)
+        convert = isempty(new_ext) ? false : true
+        @info "convert option set" convert
+    end
+    return convert
 end
 
 
@@ -514,7 +528,7 @@ function update_stats!(
     # Skip, if already updated at the beginning
     resync && return
     # Get stats of all files for the given date
-    stats = SFTP.statscan(icare, file.dir.src)
+    stats = remotestats(icare, file.dir.src)
     names = [splitext(s.desc)[1] for s in stats]
     # Set file sizes of possible obsolete files to zero, but keep files as reference
     obsolete = setdiff(keys(inventory["dates"][file.date]), names)
