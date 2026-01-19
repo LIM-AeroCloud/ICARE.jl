@@ -12,7 +12,7 @@
         version::Union{Nothing,Real} = 4.51,
         remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
         localroot::AbstractString = ".",
-        convert::Bool = true,
+        convert::Union{Nothing,Bool} = nothing,
         resync::Bool = false,
         update::Bool = false,
         logfile::AbstractString = "logs/downloads.log",
@@ -48,7 +48,7 @@ See also: [`list_inventory`](@ref), [`convert_inventory!`](@ref), [`convert_inve
 - `version::Union{Nothing,Real}`: The version number of the product (default: `4.51`).
 - `remoteroot::AbstractString`: The root path on the remote server (default: `"/SPACEBORNE/CALIOP/"`).
 - `localroot::AbstractString`: The root path on the local machine containing the product folder (default: `"."`).
-- `convert::Bool`: Whether or not to convert the downloaded files to another file format (default: `true`).
+- `convert::Union{Nothing,Bool}`: Use standard conversion by default or force conversion on/off with `true`/`false`.
 - `resync::Bool`: Whether to re-synchronize the local inventory with the remote server (default: `false`).
 - `update::Bool`: Whether to update the local files if newer versions are available
   on the remote server (default: `false`). Converted file sizes will be deleted for any updates.
@@ -78,7 +78,7 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
     localroot::AbstractString = ".",
-    convert::Bool = true,
+    convert::Union{Nothing,Bool} = nothing,
     resync::Bool = false,
     update::Bool = false,
     logfile::AbstractString = "logs/downloads.log",
@@ -98,7 +98,7 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::String = "/SPACEBORNE/CALIOP/",
     localroot::String = ".",
-    convert::Bool = true,
+    convert::Union{Nothing,Bool} = nothing,
     resync::Bool = false,
     update::Bool = false,
     logfile::String = "logs/downloads.log",
@@ -136,7 +136,7 @@ function sftp_download(
     inventory = SortedDict()
     # Get available server dates
     try
-        product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
+        convert = product_database!(icare, inventory, localroot, product, daterange, convert, resync, logger)
         logex.with_logger(logger.file) do
             te = Dates.now()
             @info "setup of database completed in $(Dates.canonicalize(te - logger.start))) @$te"
