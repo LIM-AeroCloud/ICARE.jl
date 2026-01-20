@@ -21,6 +21,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Add new automatic detection for conversion during download. Now, `.hdf` files are converted to
   `.h5`, otherwise conversion is switched off. The `convert` flag in `sftp_download` can still be
   used to enforce conversion to be switched on/off.
+- Add release automation for the update of the inventory changelog after version updates ([#50])
 
 ### Fixed
 

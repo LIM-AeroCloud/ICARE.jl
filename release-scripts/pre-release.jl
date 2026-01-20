@@ -17,6 +17,7 @@ function get_version()
 end
 
 
+## Update package version
 # Parse main Project.toml
 project = joinpath(@__DIR__, "..", "Project.toml")
 lines = readlines(project)
@@ -32,7 +33,7 @@ open(project, "w+") do io
     println.(io, lines)
 end
 
-# Update Changelog
+## Update Changelog
 changelog = joinpath(@__DIR__, "..", "CHANGELOG.md")
 lines = readlines(changelog)
 # Update WIP to new version
@@ -45,7 +46,7 @@ open(changelog, "w+") do io
     println.(io, lines)
 end
 
-# Update version badge
+## Update version badge
 badge = joinpath(@__DIR__, "..", "docs", "src", "assets", "badge.svg")
 lines = readlines(badge)
 i = findfirst(contains(r"<text.*>v"), lines)
@@ -57,7 +58,7 @@ open(badge, "w+") do io
     println.(io, lines)
 end
 
-# Update link to stable version in README
+## Update link to stable version in README
 readme = joinpath(@__DIR__, "..", "README.md")
 lines = readlines(readme)
 i = findfirst(contains("/v"), lines)
@@ -66,5 +67,53 @@ if isnothing(i)
 end
 lines[i] = replace(lines[i], r"/v[0-9.]+" => "/v$version")
 open(readme, "w+") do io
+    println.(io, lines)
+end
+
+## Update inventory changelog
+# Read docs with inventory changelog
+changelog = normpath(@__DIR__, "..", "docs", "src", "inventory.md")
+lines = readlines(changelog)
+start = findfirst(contains("## Inventory Changelog"), lines)
+
+# Find current inventory version in source code
+src = normpath(@__DIR__, "..", "src", "inventory.jl")
+code = read(src, String)
+m = match(r"\"version\"\s*=>\s*v\"(?<version>[0-9]+\.[0-9]+\.[0-9]+)\"", code)
+v_new = VersionNumber(m["version"])
+
+# Loop over inventory changelog, set new version and add links to issues
+versions = VersionNumber[]
+for i = start:length(lines)
+    line = lines[i]
+    # Set new version
+    if occursin(r"\[unreleased\]"i, line)
+        lines[i] = "### [v$v_new] - $(Dates.today())"
+    end
+    # Add links to issues
+    for m in eachmatch(r"(?<!\])\[\#(?<id>[0-9]+)\](?![\[\(])", line)
+        lines[i] = replace(lines[i], m.match =>
+            "$(m.match)(https://github.com/LIM-AeroCloud/ICARE.jl/issues/$(m["id"]))")
+    end
+    # Find older versions
+    for m in eachmatch(r"(?<!\])\[v(?<major>[0-9]+)\.(?<minor>[0-9]+)\.(?<patch>[0-9]+)\](?![\[\(])", line)
+        push!(versions, VersionNumber("$(m["major"]).$(m["minor"]).$(m["patch"])"))
+    end
+end
+
+# Check version update for consistency
+v_old = sort(versions)[end]
+if v_new.major == v_old.major + 1 && v_new.minor == 0 && v_new.patch == 0
+    @info "major inventory update from v$v_old to v$v_new performed"
+elseif v_new.major == v_old.major && v_new.minor == v_old.minor + 1 && v_new.patch == 0
+    @info "minor inventory update from v$v_old to v$v_new performed"
+elseif v_new.major == v_old.major && v_new.minor == v_old.minor && v_new.patch == v_old.patch + 1
+    @info "patch inventory update from v$v_old to v$v_new performed"
+else
+    @warn "invalid version update from v$v_old to v$v_new in inventory changelog"
+end
+
+# Save updated documentation
+open(changelog, "w+") do io
     println.(io, lines)
 end

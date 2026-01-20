@@ -123,18 +123,23 @@ package and, conversely, breaking changes in the inventory need not necessarily 
 _ICARE_. Therefore, separate versions and changelogs are introduced for the package and its
 inventory.
 
-## [Unreleased]
+### [Unreleased]
+
+#### Added
+
+- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38])
+
+#### Changed
 
 - Reordered entries in `inventory["metadata"]["database"]` with `start` and `stop` date directly
   after `dates` and `missing` data.
 - Made `size` a sub-dictionary with entries `total`, `downloaded`, and `converted` instead of
   the entries `"downloaded size"` and `"converted size"`. This avoids quoted multi-word keys 
   in the inventory.
-- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38])
 
-## [v1.0.0] - 2025-12-27
+### [v1.0.0] - 2025-12-27
 
-### Added
+#### Added
 
 - First stable version of the inventory (being tracked from now on) with sections for
   - `dates` holding file stats of all available granules for all available dates
