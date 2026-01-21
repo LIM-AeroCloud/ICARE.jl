@@ -1,0 +1,56 @@
+name: Merge Release to Dev
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches:
+      - 'rel/**'
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+          # Use default GITHUB_TOKEN for checkout, will use PAT for merge
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH=${{ github.event.workflow_run.head_branch }}
+          VERSION=${BRANCH#rel/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Merge to dev
+        env:
+          # Use PAT or GitHub App token with admin permissions to bypass branch protection
+          # Set this as a repository secret: Settings > Secrets > Actions > ADMIN_TOKEN
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Fetch dev branch
+          git fetch origin dev:dev
+
+          # Checkout dev
+          git checkout dev
+
+          # Merge release branch
+          git merge --no-ff ${{ steps.version.outputs.branch }} -m "Merge release ${{ steps.version.outputs.version }} into dev"
+
+          # Push with admin token (bypasses protection)
+          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git dev
+
+      - name: Comment on success
+        if: success()
+        run: |
+          echo "✅ Successfully merged ${{ steps.version.outputs.branch }} to dev"
+          echo "Version ${{ steps.version.outputs.version }} is now ready for release"

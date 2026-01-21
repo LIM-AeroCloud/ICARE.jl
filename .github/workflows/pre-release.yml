@@ -1,0 +1,55 @@
+name: Pre-Release Automation
+
+on:
+  push:
+    branches:
+      - 'rel/**'
+
+jobs:
+  pre-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version detection
+
+      - name: Check if pre-release already ran
+        id: check_marker
+        run: |
+          # Extract version from branch name
+          BRANCH=${GITHUB_REF#refs/heads/}
+          BRANCH_VERSION=${BRANCH#rel/}
+
+          # Extract version from Project.toml
+          PROJECT_VERSION=$(grep '^version = ' Project.toml | cut -d'"' -f2)
+
+          echo "Branch version: $BRANCH_VERSION"
+          echo "Project.toml version: $PROJECT_VERSION"
+
+          # Output version for later steps
+          echo "version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
+
+          if [ "$BRANCH_VERSION" = "$PROJECT_VERSION" ]; then
+            echo "Versions match - pre-release already completed"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Versions differ - running pre-release"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare release
+        if: steps.check_marker.outputs.skip == 'false'
+        run: |
+          cd release-scripts
+          julia pre-release.jl
+
+      - name: Commit changes
+        if: steps.check_marker.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Set version to ${{ steps.check_marker.outputs.version }}, update documentation"
+          git push

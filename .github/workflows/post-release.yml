@@ -1,0 +1,105 @@
+name: Post-Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  post-release:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.version.outputs.branch }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Tagged version: $TAG"
+
+          # Create post-release branch name
+          BRANCH="post-rel/v$TAG"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Prepare branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ${{ steps.version.outputs.branch }}
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - name: Run post-release script
+        run: |
+          cd release-scripts
+          julia post-release.jl minor
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Project.toml
+
+          # Extract new version from Project.toml
+          NEW_VERSION=$(grep '^version = ' Project.toml | cut -d'"' -f2)
+          git commit -m "Bump version to $NEW_VERSION"
+          git push origin ${{ steps.version.outputs.branch }}
+
+  merge-post-release:
+    needs: post-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for CI to complete
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ needs.post-release.outputs.branch }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          running-workflow-name: 'merge-post-release'  # Exclude this workflow from waiting
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          BRANCH="post-rel/v$TAG"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Merge post-release to dev
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Fetch post-release branch
+          git fetch origin ${{ steps.version.outputs.branch }}:${{ steps.version.outputs.branch }}
+
+          # Merge post-release branch
+          git merge --no-ff ${{ steps.version.outputs.branch }} -m "Merge post-release changes into dev"
+
+          # Push with admin token (bypasses protection)
+          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git dev
+
+      - name: Delete post-release branch
+        if: success()
+        run: |
+          git push origin --delete ${{ steps.version.outputs.branch }}
