@@ -44,7 +44,7 @@ function check_update(v_old::VersionNumber, v_new::VersionNumber, type::Abstract
     elseif v_new.major == v_old.major && v_new.minor == v_old.minor && v_new.patch == v_old.patch + 1
         @info "patch $type update from v$v_old to v$v_new"
     else
-        @warn "invalid $type version update from v$v_old to v$v_new"
+        throw(ArgumentError("invalid $type version update from v$v_old to v$v_new"))
     end
 end
 
