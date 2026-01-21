@@ -68,7 +68,7 @@ jobs:
         id: changelog
         uses: mindsers/changelog-reader-action@v2
         with:
-          version: ${{ needs.check-version.outputs.version }}
+          version: v${{ needs.check-version.outputs.version }}
           path: ./CHANGELOG.md
 
       - name: Create git tag

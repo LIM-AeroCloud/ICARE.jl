@@ -42,15 +42,26 @@ jobs:
           version: '1'
 
       - name: Run post-release script
+        env:
+          RELEASED_VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd release-scripts
-          julia post-release.jl minor
+          julia post-release.jl
 
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage Project.toml with new version
           git add Project.toml
+
+          # Remove pre-release marker file if it exists (post-release script deletes it)
+          MARKER_FILE=".pre-release-complete-v${{ steps.version.outputs.version }}"
+          if [ ! -f "$MARKER_FILE" ]; then
+            echo "Marker file was removed by post-release script"
+            git add "$MARKER_FILE" 2>/dev/null || true
+          fi
 
           # Extract new version from Project.toml
           NEW_VERSION=$(grep '^version = ' Project.toml | cut -d'"' -f2)
@@ -60,6 +71,7 @@ jobs:
   create-pr:
     needs: post-release
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Fail if CI doesn't complete within 30 minutes
 
     steps:
       - name: Wait for CI to complete

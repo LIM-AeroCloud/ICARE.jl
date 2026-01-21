@@ -22,20 +22,20 @@ jobs:
           BRANCH=${GITHUB_REF#refs/heads/}
           BRANCH_VERSION=${BRANCH#rel/}
 
-          # Extract version from Project.toml
-          PROJECT_VERSION=$(grep '^version = ' Project.toml | cut -d'"' -f2)
+          # Check for marker file indicating successful completion
+          MARKER_FILE=".pre-release-complete-v${BRANCH_VERSION}"
 
           echo "Branch version: $BRANCH_VERSION"
-          echo "Project.toml version: $PROJECT_VERSION"
+          echo "Checking for marker file: $MARKER_FILE"
 
           # Output version for later steps
           echo "version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
 
-          if [ "$BRANCH_VERSION" = "$PROJECT_VERSION" ]; then
-            echo "Versions match - pre-release already completed"
+          if [ -f "$MARKER_FILE" ]; then
+            echo "✅ Marker file exists - pre-release already completed successfully"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
-            echo "Versions differ - running pre-release"
+            echo "⚙️  Marker file not found - running pre-release"
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 

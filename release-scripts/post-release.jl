@@ -1,34 +1,43 @@
-# Parse command line argument for bump type (default: minor)
-bump_type = length(ARGS) > 0 ? lowercase(ARGS[1]) : "minor"
-if !(bump_type in ["minor", "major"])
-    @error "BUMP_TYPE must be 'minor' or 'major', got: $bump_type"
+using Logging
+
+# Get the released version from environment variable
+released_version_str = get(ENV, "RELEASED_VERSION", "")
+if isempty(released_version_str)
+    @error "RELEASED_VERSION environment variable is not set"
     exit(1)
 end
+released_version = VersionNumber(released_version_str)
+@info "Released version" released_version
 
 # Parse main Project.toml
 project = joinpath(@__DIR__, "..", "Project.toml")
 lines = readlines(project)
-# Find Julia version
+
+# Find version line
 vstring = "version = "
 i = findfirst(startswith(vstring), lines)
 vstart, vend = findall(isequal('"'), lines[i])
 vstart += 1
 vend -= 1
-println("current version: ", lines[i][vstart:vend])
-version = VersionNumber(lines[i][vstart:vend])
+@info "Current version on dev" version=lines[i][vstart:vend]
 
-# Set new stable version based on bump type
-version = if bump_type == "major"
-    major = version.major + 1
-    string(VersionNumber(major, 0, 0), "-DEV")
-else
-    minor = version.minor + 1
-    string(VersionNumber(version.major, minor, 0), "-DEV")
-end
-lines[i] = vstring * '"' * version * '"'
-println("set version to next $bump_type: ", version)
+# Bump to next minor DEV version
+minor = released_version.minor + 1
+new_version = string(VersionNumber(released_version.major, minor, 0), "-DEV")
+lines[i] = vstring * '"' * new_version * '"'
+@info "Set version to next minor" new_version
 
 # Save to Project.toml
 open(project, "w+") do io
     println.(io, lines)
+end
+
+# Clean up pre-release marker file
+marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(released_version)")
+if isfile(marker_file)
+    rm(marker_file)
+    @info "Removed pre-release marker" file=basename(marker_file)
+else
+    @error "Pre-release marker file not found - pre-release may not have completed successfully" expected=basename(marker_file)
+    exit(1)
 end
