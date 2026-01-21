@@ -57,7 +57,7 @@ jobs:
           git commit -m "Bump version to $NEW_VERSION"
           git push origin ${{ steps.version.outputs.branch }}
 
-  merge-post-release:
+  create-pr:
     needs: post-release
     runs-on: ubuntu-latest
 
@@ -68,7 +68,7 @@ jobs:
           ref: ${{ needs.post-release.outputs.branch }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
-          running-workflow-name: 'merge-post-release'  # Exclude this workflow from waiting
+          running-workflow-name: 'create-pr'  # Exclude this workflow from waiting
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -82,24 +82,26 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/v}
           BRANCH="post-rel/v$TAG"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "version=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Merge post-release to dev
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Create Pull Request to dev
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.version.outputs.branch }}
+          base: dev
+          title: "Post-release v${{ steps.version.outputs.version }} - Bump to next DEV version"
+          body: |
+            ## Post-release v${{ steps.version.outputs.version }}
 
-          # Fetch post-release branch
-          git fetch origin ${{ steps.version.outputs.branch }}:${{ steps.version.outputs.branch }}
+            This PR completes the release process by merging the next development version into `dev`.
 
-          # Merge post-release branch
-          git merge --no-ff ${{ steps.version.outputs.branch }} -m "Merge post-release changes into dev"
+            ✅ Release v${{ steps.version.outputs.version }} has been published
+            ✅ Version bumped to next minor DEV version
+            ✅ CI has passed on the post-release branch
 
-          # Push with admin token (bypasses protection)
-          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git dev
+            **Action required:** Please review and approve this PR to complete the automated release process.
 
-      - name: Delete post-release branch
-        if: success()
-        run: |
-          git push origin --delete ${{ steps.version.outputs.branch }}
+            Once approved and merged, the release process is complete and development can continue on dev.
+          labels: release,automated
+          draft: false

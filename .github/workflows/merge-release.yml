@@ -8,7 +8,7 @@ on:
       - 'rel/**'
 
 jobs:
-  merge:
+  create-pr:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
@@ -18,7 +18,6 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
-          # Use default GITHUB_TOKEN for checkout, will use PAT for merge
 
       - name: Extract version from branch name
         id: version
@@ -28,26 +27,29 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Merge to dev
-        env:
-          # Use PAT or GitHub App token with admin permissions to bypass branch protection
-          # Set this as a repository secret: Settings > Secrets > Actions > ADMIN_TOKEN
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Create Pull Request to main
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.version.outputs.branch }}
+          base: main
+          title: "Release ${{ steps.version.outputs.version }}"
+          body: |
+            ## Release ${{ steps.version.outputs.version }}
 
-          # Fetch dev branch
-          git fetch origin dev:dev
+            This PR merges the release branch `${{ steps.version.outputs.branch }}` into `main`.
 
-          # Checkout dev
-          git checkout dev
+            ✅ CI has passed on the release branch
+            ✅ Pre-release script has updated version and documentation
 
-          # Merge release branch
-          git merge --no-ff ${{ steps.version.outputs.branch }} -m "Merge release ${{ steps.version.outputs.version }} into dev"
+            **Action required:** Please review and approve this PR to continue the automated release process.
 
-          # Push with admin token (bypasses protection)
-          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git dev
+            Once approved and merged:
+            - A git tag `v${{ steps.version.outputs.version }}` will be created on main
+            - A GitHub release will be published
+            - Post-release automation will create a PR to dev with the next DEV version
+          labels: release,automated
+          draft: false
 
       - name: Comment on success
         if: success()
