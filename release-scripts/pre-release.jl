@@ -113,7 +113,7 @@ start = findfirst(contains("## Inventory Changelog"), lines)
 # Find current inventory version in source code
 src = normpath(@__DIR__, "..", "src", "inventory.jl")
 code = read(src, String)
-m = match(r"\"version\"\s*=>\s*v\"(?<version>[0-9]+\.[0-9]+\.[0-9]+)\"", code)
+m = match(r"\"version\"\s*=>\s*v\"(?<version>[^\"]+)\"", code)
 v_new = VersionNumber(m["version"])
 
 # Loop over inventory changelog, set new version and add links to issues
@@ -125,13 +125,13 @@ for i = start:length(lines)
         lines[i] = "### [v$v_new] - $(Dates.today())"
     end
     # Add links to issues
-    for m in eachmatch(r"(?<!\])\[\#(?<id>[0-9]+)\](?![\[\(])", line)
+    for m in eachmatch(r"(?<!\])\[#(?<id>[0-9]+)\](?![(\[])", line)
         lines[i] = replace(lines[i], m.match =>
             "$(m.match)(https://github.com/LIM-AeroCloud/ICARE.jl/issues/$(m["id"]))")
     end
     # Find older versions
-    for m in eachmatch(r"(?<!\])\[v(?<major>[0-9]+)\.(?<minor>[0-9]+)\.(?<patch>[0-9]+)\](?![\[\(])", line)
-        push!(versions, VersionNumber("$(m["major"]).$(m["minor"]).$(m["patch"])"))
+    for m in eachmatch(r"^###\s+\[v(?<version>[0-9]+\.[0-9]+\.[0-9]+[^\]]*)\]\s+-\s+[0-9]{4}-[0-9]{2}-[0-9]{2}", line)
+        push!(versions, VersionNumber(m["version"]))
     end
 end
 
