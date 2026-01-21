@@ -22,6 +22,10 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
   `.h5`, otherwise conversion is switched off. The `convert` flag in `sftp_download` can still be
   used to enforce conversion to be switched on/off.
 - Add release automation for the update of the inventory changelog after version updates ([#50])
+- Added github actions scripts and adjust the pre-release script to completely automate the 
+  release process ([#50])
+- Added changelog enforcer github action to ensure, a changelog entry was made unless the
+  `no-docs` label is set ([#50])
 
 ### Fixed
 
