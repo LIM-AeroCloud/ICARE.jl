@@ -55,7 +55,7 @@ project = joinpath(@__DIR__, "..", "Project.toml")
 lines = readlines(project)
 # Set release version
 vstring = "version = "
-v_new = get_version()
+package_version = v_new = get_version()
 i = findfirst(startswith(vstring), lines)
 m = match(r"\"(?<version>[^\"]+)\"", lines[i])
 v_old = VersionNumber(m["version"])
@@ -144,10 +144,10 @@ open(changelog, "w+") do io
     println.(io, lines)
 end
 ## Create marker file to indicate successful completion
-marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(v_new)")
+marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(package_version)")
 open(marker_file, "w") do io
-    println(io, "Pre-release completed successfully for v$(v_new)")
+    println(io, "Pre-release completed successfully for v$(package_version)")
     println(io, "Timestamp: $(Dates.now())")
 end
 
-@info "Pre-release script completed successfully for v$(v_new)" marker_file
+@info "Pre-release script completed successfully for v$(package_version)" marker_file
