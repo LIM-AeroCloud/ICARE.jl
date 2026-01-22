@@ -5,16 +5,16 @@
     clean!(
         root::AbstractString=".",
         erase::Extension=none;
-        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::String = "clean.log",
+        logs::Bool=false,
+        logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
     clean!(
         inventory::SortedDict,
         erase::Extension=none;
-        keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-        logfile::String = "clean.log",
+        logs::Bool=false,
+        logfile::AbstractString = "logs/clean.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -30,15 +30,14 @@ parameter values are predefined constants from the `Extension` enum.
 Both methods return the updated `inventory` for reference.
 
 See also: [`attach!`](@ref), [`detach!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref),
-[`convert!`](@ref), [`convert(::AbstractString)`](@ref), [`sftp_download`](@ref)
+[`convert_inventory!`](@ref), [`convert_inventory`](@ref), [`sftp_download`](@ref)
 
 # Keyword Arguments
 
-- `keepext::Union{AbstractString,Vector{<:AbstractString}}`: One or multiple (as vector)
-  file extensions (e.g. `".log"`, `[".yaml", ".log"]`) to keep during clean-up even if not part of
-  the inventory. Can be used to keep log or metadata files.
-- `logfile::String`: The name of the log file (default: `"clean.log"`; the name will be appended
-  by the current date and time).
+- `logs::Bool`: Whether to clean (`true`) or keep (`false`) log files created during previous
+    operations (default: `false`).
+- `logfile::AbstractString`: The name of the log file (default: `"logs/clean.log"`; the name will be appended
+  by the start timestamp). The name may include a path (either absolute or relative to the product folder).
 - `loglevel::Symbol`: The log level for the download process (default: `:Debug`).
 """
 function clean! end
@@ -46,70 +45,111 @@ function clean! end
 function clean!(
     root::AbstractString=".",
     erase::Extension=none;
-    keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::String = "clean.log",
+    logs::Bool=false,
+    logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Load the inventory from the yaml in the given root
-    path = joinpath(root, ".inventory.yaml") |> realpath
-    inventory = SortedDict()
-    load_inventory!(inventory, path)
+    logger = init_logging(logfile, root, loglevel)
+    inventory = load_inventory(root, logger.tee, save_migrations=false)
     # Call the clean method for the inventory
-    clean!(inventory, erase; keepext, logfile, loglevel)
+    logex.with_logger(logger.tee) do
+        @info "analyse inventory and local database for cleaning"
+    end
+    logex.with_logger(logger.file) do
+        @debug "parameters" erase logs loglevel
+    end
+    _clean!(inventory, logger, erase, logs)
 end
 
 function clean!(
     inventory::SortedDict,
     erase::Extension=none;
-    keepext::Union{AbstractString,Vector{<:AbstractString}}="",
-    logfile::String = "clean.log",
+    logs::Bool=false,
+    logfile::AbstractString = "logs/clean.log",
     loglevel::Symbol = :Debug
 )::SortedDict
-    # Start
-    t0 = Dates.now()
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        # Rearrange inventory for better processing
-        @info "analyse inventory and local database"
-        database = inventory_dates(inventory, erase)
-        # Scan inventory for additional files and folders
-        waste = extrascan(inventory, inventory["metadata"]["local"]["path"], database)
-        # Remove current logfile from extra files
-        filter!(!isequal(logfile), waste.files)
-        # Keep specified extensions
-        if !isempty(keepext)
-            keepext isa Vector || (keepext = [keepext])
-            for ext in keepext
-                filter!(!endswith(ext), waste.files)
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.tee) do
+        @info "analyse inventory and local database for cleaning"
+    end
+    logex.with_logger(logger.file) do
+        @debug "parameters" erase logs loglevel
+    end
+    _clean!(inventory, logger, erase, logs)
+end
+
+"""
+    _clean!(
+        inventory::SortedDict,
+        logger::Logger,
+        erase::Extension=none;
+    ) -> SortedDict
+
+Implementation of the clean-up process for wrapper functions `clean!`.
+"""
+function _clean!(
+    inventory::SortedDict,
+    logger::Logger,
+    erase::Extension,
+    logs::Bool
+)::SortedDict
+    # Rearrange inventory for better processing
+    database = inventory_dates(inventory, erase)
+    # Define root folder and extras
+    root = inventory["metadata"]["local"]["path"]
+    extras = haskey(inventory, "extras") ?
+        joinpath.(root, inventory["extras"]) : String[]
+    # Load list of all log files
+    logfiles, extralogs = get_logs(root)
+
+    # Remove current logfile from extra files
+    if logs
+        # Only keep current log file (allow old logs to be deleted)
+        startswith(logger.filename, "..") ?
+             pop!(logfiles) : _attach!(extras, [logger.filename], root, logger)
+    else
+        # Keep all log files as extras (protect all from deletion)
+        _attach!(extras, logfiles, root, logger)
+    end
+    # filter!(!contains(Dates.format(logger.start, Dates.dateformat"yyyy_mm_dd_HH_MM_SS")), waste.files)
+    waste = extrascan(normpath.(root, extras), root, database)
+    # Ensure to delete logs outside the product folder
+    logs && union!(waste.files, normpath.(root, extralogs))
+    logex.with_logger(logger.file) do
+        @debug "identified path objects not belonging to database" waste.folders waste.files
+    end
+    # Clean up local database
+    if confirm(waste, logger.file)
+        logex.with_logger(logger.file) do
+            s = length(waste.files) == 1 ? "" : "s"
+            s_ = length(waste.folders) == 1 ? "" : "s"
+            @warn("cleaning $(length(waste.files)) file$s and $(length(waste.folders)) folder$s_",
+                folders = waste.folders |> collect |> sort, files = waste.files |> collect |> sort)
+        end
+        rm.(waste.files, force=true)
+        rm.(waste.folders, recursive=true, force=true)
+        if logs
+            rm.(joinpath.(root, extralogs), force=true)
+            open(joinpath.(root, ".inventory.logs"), "w+") do io
+                println(io, relpath(logger.filename, root))
             end
         end
-        # Clean up local database
-        if confirm(waste, logger)
-            Logging.with_logger(logger) do
-                s = length(waste.files) == 1 ? "" : "s"
-                s_ = length(waste.folders) == 1 ? "" : "s"
-                @warn("cleaning $(length(waste.files)) file$s and $(length(waste.folders)) folder$s_",
-                    folders = waste.folders |> collect |> sort, files = waste.files |> collect |> sort)
-            end
-            rm.(waste.files, force=true)
-            rm.(waste.folders, recursive=true, force=true)
-            reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
-            isdisjoint(reference, waste.files) || begin
-                inventory["metadata"]["database"]["updated"] = Dates.now()
-                save_inventory(inventory, t0)
-            end
-            @info "clean-up completed"
-            Logging.with_logger(logger) do
-                @info "cleaning completed"
-            end
-        else
-            @info "aborting clean-up"
-            Logging.with_logger(logger) do
-                @info "cleaning cancelled"
-            end
+        reference = get.(splitext.(database.files), 1, "").*inventory["metadata"]["file"]["ext"]
+        isdisjoint(reference, waste.files) || begin
+            inventory["metadata"]["database"]["updated"] = Dates.now()
+            save_inventory(inventory, logger, logger.start)
         end
+        logex.with_logger(logger.tee) do
+            @info "cleaning completed"
+        end
+    else
+        logex.with_logger(logger.tee) do
+            @info "cleaning cancelled"
+        end
+    end
+    if isopen(logger.file.logger.stream)
+        close(logger.file.logger.stream)
     end
     return inventory
 end
@@ -119,64 +159,75 @@ end
     ignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any};
-        logfile::String = "ignore.log",
+        logfile::AbstractString = "logs/ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
 Flag the `dates` as ignored in the `inventory` and ensure they will not get downloaded.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
-file name automatically. The function returns the updated `inventory`.
+file name automatically. The `logfile` may include a path (either absolute or relative to the
+product folder). The function returns the updated `inventory`.
 
 See also: [`unignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function ignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any};
-    logfile::String = "ignore.log",
+    logfile::AbstractString = "logs/ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
-    t0 = Dates.now()
     haskey(inventory, "ignore") || (inventory["ignore"] = SortedDict{Date, Any}())
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        # Loop over dates and granules to be ignored
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.file) do
+        @info "attempting to ignore the following granules"
         for (date, granules) in dates
-            # Skip dates not in the inventory
-            if !haskey(inventory["dates"], date)
-                @warn "$date is not part of the inventory, only dates actually present in the inventory can be ignored"
-                Logging.with_logger(logger) do
-                    @warn "$date not found in inventory, skip ignoring"
-                end
-                continue
-            end
-            # Split granules in outliers, duplicates, and valid granules
-            granules isa AbstractString && (granules = [granules])
-            granules, outliers = split_outliers(granules, keys(inventory["dates"][date]))
-            if haskey(inventory["ignore"], date)
-                duplicates, outliers = split_outliers(outliers, keys(inventory["ignore"][date]))
-            else
-                duplicates = String[]
-                isempty(granules) || (inventory["ignore"][date] = SortedDict())
-            end
-            log_ignore(logger, outliers, "skipping granules not found in the inventory",
-                level=Logging.Warn)
-            log_ignore(logger, duplicates, "skipping granules that were already ignored")
-            for g in granules
-                # Move all valid granules to the ignore section
-                inventory["ignore"][date][g] = inventory["dates"][date][g]
-                delete!(inventory["dates"][date], g)
-                isempty(inventory["dates"][date]) && delete!(inventory["dates"], date)
-            end
-            isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
-            msg = "ignoring granules on $date"
-            log_ignore(logger, granules, msg, msg*"; data moved from dates to ignore section")
+            @info "$date" granules
         end
-        # Save inventory if updated
-        save_inventory(inventory, t0)
+        @debug "parameters" loglevel
     end
+    # Loop over dates and granules to be ignored
+    for (date, granules) in dates
+        # Skip dates not in the inventory
+        if !haskey(inventory["dates"], date)
+            logex.with_logger(logger.tee) do
+                @warn "$date not found in inventory, skip ignoring"
+            end
+            @info "only dates and granules actually present in the inventory can be ignored"
+            continue
+        end
+        # Split granules in outliers, duplicates, and valid granules
+        granules isa AbstractString && (granules = [granules])
+        granules, outliers = split_outliers(granules, keys(inventory["dates"][date]))
+        if haskey(inventory["ignore"], date)
+            duplicates, outliers = split_outliers(outliers, keys(inventory["ignore"][date]))
+        else
+            duplicates = String[]
+            isempty(granules) || (inventory["ignore"][date] = SortedDict())
+        end
+        isempty(outliers) || logex.with_logger(logger.tee) do
+            @warn "skipping granules not found in the inventory" outliers
+        end
+        isempty(duplicates) || logex.with_logger(logger.tee) do
+            @info "skipping granules that were already ignored" duplicates
+        end
+        for g in granules
+            # Move all valid granules to the ignore section
+            inventory["ignore"][date][g] = inventory["dates"][date][g]
+            delete!(inventory["dates"][date], g)
+            isempty(inventory["dates"][date]) && delete!(inventory["dates"], date)
+            logex.with_logger(logger.file) do
+                @debug "ignored granule $g on $date"
+            end
+        end
+        isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
+    end
+    # Save inventory if updated
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done ignoring"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -185,72 +236,98 @@ end
     unignore!(
         inventory::SortedDict,
         dates::AbstractDict{Date, Any}=Dict{Date,Any}();
-        logfile::String = "ignore.log",
+        logfile::AbstractString = "logs/ignore.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
 Unflag the `dates` from being ignored in the `inventory` and allow them to be downloaded again.
 Log events with the specified `loglevel` to the `logfile`. A timestamp is appended to the log
-file name automatically. The function returns the updated `inventory`.
+file name automatically. The `logfile` may include a path (either absolute or relative to the
+product folder). The function returns the updated `inventory`.
 
 See also: [`ignore!`](@ref), [`attach!`](@ref), [`detach!`](@ref), [`sftp_download`](@ref)
 """
 function unignore!(
     inventory::SortedDict,
     dates::AbstractDict{Date,<:Any}=Dict{Date,Any}();
-    logfile::String = "ignore.log",
+    logfile::AbstractString = "logs/ignore.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Setup
-    t0 = Dates.now()
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.file) do
+        isempty(dates) || @info "attempting to unignore the following granules"
+        for (date, granules) in dates
+            @info "$date" granules
+        end
+        @debug "parameters" loglevel
+    end
     if !haskey(inventory, "ignore")
-        @info "no ignore section found in the inventory, nothing to unignore"
+        logex.with_logger(logger.tee) do
+            @warn "no ignore section found in the inventory, nothing to unignore"
+        end
+        close(logger.file.logger.stream)
         return inventory
     end
     # Unignore everything, if no dates are provided
     if isempty(dates)
+        logex.with_logger(logger.tee) do
+            @warn "unignoring all granules in the ignore section"
+        end
         for (key, values) in inventory["ignore"]
             dates[key] = collect(keys(values))
+            logex.with_logger(logger.file) do
+                @info "$key" granules = dates[key]
+            end
         end
     end
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        # Loop over dates and granules to be unignored
-        for (date, granules) in dates
-            # Skip dates not in the ignore section
-            if !haskey(inventory["ignore"], date)
-                log_ignore(logger, granules, "no ignored data for $date, nothing to unignore",
-                    level=Logging.Warn)
-                continue
+    # Loop over dates and granules to be unignored
+    for (date, granules) in dates
+        # Skip dates not in the ignore section
+        if !haskey(inventory["ignore"], date)
+            logex.with_logger(logger.tee) do
+                @warn "no ignored data for $date, nothing to unignore" granules
             end
-            # Split granules in outliers, duplicates, and valid granules
-            granules isa AbstractString && (granules = [granules])
-            granules, outliers = split_outliers(granules, keys(inventory["ignore"][date]))
-            if haskey(inventory["dates"], date)
-                duplicates, outliers = split_outliers(outliers, keys(inventory["dates"][date]))
-            else
-                duplicates = String[]
-                isempty(granules) || (inventory["dates"][date] = SortedDict())
-            end
-            log_ignore(logger, outliers, "skipping granules not found in the ignore section",
-                level=Logging.Warn)
-            log_ignore(logger, duplicates, "skipping granules that were already unignored")
-            for g in granules
-                # Move all valid granules to the dates section
-                inventory["dates"][date][g] = inventory["ignore"][date][g]
-                delete!(inventory["ignore"][date], g)
-                isempty(inventory["ignore"][date]) && delete!(inventory["ignore"], date)
-            end
-            isempty(inventory["ignore"]) && delete!(inventory, "ignore")
-            isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
-            msg = "unignoring granules on $date"
-            log_ignore(logger, granules, msg, msg*"; data moved from ignore to dates section")
+            continue
         end
-        # Save inventory if updated
-        save_inventory(inventory, t0)
+        # Split granules in outliers, duplicates, and valid granules
+        granules isa AbstractString && (granules = [granules])
+        granules, outliers = split_outliers(granules, keys(inventory["ignore"][date]))
+        if haskey(inventory["dates"], date)
+            duplicates, outliers = split_outliers(outliers, keys(inventory["dates"][date]))
+        else
+            duplicates = String[]
+            isempty(granules) || (inventory["dates"][date] = SortedDict())
+        end
+        isempty(outliers) || logex.with_logger(logger.tee) do
+            @warn "skipping granules not found in the ignore section" outliers
+        end
+        isempty(duplicates) || logex.with_logger(logger.tee) do
+            @info "skipping granules that were already unignored" duplicates
+        end
+        for g in granules
+            # Move all valid granules to the dates section
+            inventory["dates"][date][g] = inventory["ignore"][date][g]
+            delete!(inventory["ignore"][date], g)
+            isempty(inventory["ignore"][date]) && delete!(inventory["ignore"], date)
+            logex.with_logger(logger.file) do
+                @debug "unignored granule $g on $date"
+            end
+        end
+        if isempty(inventory["ignore"])
+            delete!(inventory, "ignore")
+            logex.with_logger(logger.tee) do
+                @info "nothing left to ignore, removed ignore section from inventory"
+            end
+        end
+        isempty(granules) || (inventory["metadata"]["database"]["updated"] = Dates.now())
     end
+    # Save inventory if updated
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done unignoring"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -281,18 +358,31 @@ function list_inventory(
     dates = collect(Date, keys(inventory["dates"]))
     years = Dates.year.(dates) |> unique
     date_range = [findall(d -> Dates.year(d) == year, dates) for year in years]
+    println('\n')
     list_dates && begin
         printstyled("Database overview (with path tree)\n\n", bold=true, underline=true)
-        println(inventory["metadata"]["remote"]["product"])
+        @info "inventory version: $(inventory["metadata"]["version"])"
+        println('\n', inventory["metadata"]["remote"]["product"])
         for d = 1:length(date_range) - 1
             print_year_stats(inventory, years[d], dates[date_range[d]])
         end
         print_year_stats(inventory, years[end], dates[date_range[end]], true)
     end
+    nconv, sconv = isempty(inventory["metadata"]["file"]["newext"]) ? ("", "") :
+        ("/converted", " — converted/estimated total size")
+    @info "stats show downloaded$nconv file count – downloaded/available size$sconv"*
+        " + respective percentages in parentheses"
+    if !isempty(inventory["metadata"]["file"]["newext"])
+        @info "total converted size is estimated based on an average compression of "*
+            "$(round(100(1 - inventory["metadata"]["database"]["size"]["compression-ratio"]), digits=2))%"
+        @info "files are converted from $(inventory["metadata"]["file"]["ext"]) "*
+            "to $(inventory["metadata"]["file"]["newext"])"
+    end
+    println('\n')
     list_gaps && begin
         printstyled("Missing dates\n\n", bold=true, underline=true)
         gaps = combine_gaps(inventory, (start = inventory["metadata"]["database"]["start"],
-            stop = inventory["metadata"]["database"]["stop"]), Logging.ConsoleLogger(Logging.Warn, show_limited=false))
+            stop = inventory["metadata"]["database"]["stop"]), logex.ConsoleLogger(Logging.Warn, show_limited=false))
         if !isempty(gaps)
             [println(gap) for gap in gaps]
             println('\n')
@@ -311,26 +401,34 @@ function list_inventory(
         println(join(extras, "\n├─ ", "\n└─ "), "\n\n")
     end
     printstyled("Overall statistics\n\n", bold=true, underline=true)
-    println("date range:    ", inventory["metadata"]["database"]["start"], " ... ",
+    println("date range:             ", inventory["metadata"]["database"]["start"], " ... ",
         inventory["metadata"]["database"]["stop"])
-    println("dates:         ", length(dates))
-    println("missing dates: ", inventory["metadata"]["database"]["missing"])
-    println("granules:      ", inventory["metadata"]["file"]["downloads"],"/",
-        inventory["metadata"]["file"]["conversions"], " of ", inventory["metadata"]["file"]["count"])
-    println("size:          ", display_size(inventory["metadata"]["database"]["downloaded size"]),
-        "/", display_size(inventory["metadata"]["database"]["converted size"]), " of ",
-        display_size(inventory["metadata"]["database"]["size"]), '\n')
-    @info "file sizes are displayed as <downloads in original format>/<converted size> of <total size in original format>"
+    println("dates:                  ", length(dates))
+    println("missing dates:          ", inventory["metadata"]["database"]["missing"])
+    expl, count = isempty(inventory["metadata"]["file"]["newext"]) ? ("                ", "") :
+        (" (orig./conv.): ", "/$(inventory["metadata"]["file"]["conversions"])")
+    println("granules", expl, inventory["metadata"]["file"]["downloads"], count,
+        " of ", inventory["metadata"]["file"]["count"])
+    println("download size:          ", display_size(inventory["metadata"]["database"]["size"]["downloaded"]),
+        " of ", display_size(inventory["metadata"]["database"]["size"]["total"]))
+    isempty(inventory["metadata"]["file"]["newext"]) || println("converted size:         ",
+        display_size(inventory["metadata"]["database"]["size"]["converted"]), " of ",
+        display_size(round(Int,
+            inventory["metadata"]["database"]["size"]["total"] *
+            inventory["metadata"]["database"]["size"]["compression-ratio"])))
+    conv = isempty(inventory["metadata"]["file"]["newext"]) ? "none" :
+        "$(inventory["metadata"]["file"]["ext"]) > $(inventory["metadata"]["file"]["newext"])"
+    println("conversion:             ", conv)
 end
 
 
-## Functions for attaching and detaching extra data
+#* Functions for attaching and detaching extra data
 
 """
     attach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}};
-        logfile::String = "extras.log",
+        logfile::AbstractString = "logs/extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -339,101 +437,134 @@ Files nested in foreign folders are recognised as well keeping the parent folder
 operations. The `extras` can be provided as a single `AbstractString` or as a vector of
 `AbstractString`s. The function returns the updated `inventory` and logs events with the
 specified `loglevel` to the `logfile`. A timestamp is appended to the log file name automatically.
+The `logfile` may include a path (either absolute or relative to the product folder).
 
 See also: [`detach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
+function attach! end
+
 function attach!(
     inventory::SortedDict,
-    extras::Union{AbstractString,Vector{<:AbstractString}};
-    logfile::String = "extras.log",
+    extras::AbstractString;
+    logfile::AbstractString = "logs/extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    attach!(inventory, [String(extras)]; logfile, loglevel)
+end
+
+function attach!(
+    inventory::SortedDict,
+    extras::Vector{<:AbstractString};
+    logfile::AbstractString = "logs/extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    attach!(inventory, String.(extras); logfile, loglevel)
+end
+
+function attach!(
+    inventory::SortedDict,
+    extras::Vector{String};
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
     # Init
-    t0 = Dates.now()
-    extras isa AbstractString && (extras = [extras])
-    haskey(inventory, "extras") || (inventory["extras"] = Vector{String}())
+    extradata = haskey(inventory, "extras") ? inventory["extras"] : Vector{String}()
     root = inventory["metadata"]["local"]["path"]
-    logfile, level = init_logging(logfile, root, loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        Logging.with_logger(logger) do
-            @info "prepare attachment of extras" extras
-        end
-        for path in extras
-            #* Prepare path, ensure relative paths to the product folder, get relative tree for base
-            # Normalize path name
-            # ℹ relpath ensures no trailing slash in the path, normpath ensures direct path
-            path = normpath(relpath(path))
-            if isabspath(path)
-                if startswith(path, root)
-                    r = length(root) + 2 # ℹ next index after slash
-                    path = path[r:end]
-                else
-                    @warn "'$path' is outside the product folder, skipping"
-                    Logging.with_logger(logger) do
-                        @warn "'$path' is outside the product folder, skip attaching"
-                    end
-                    continue
-                end
-            end
-            # Save parent tree before tampering with path
-            tree = splitpath(path)[1:end-1]
-            # Only attach existing paths within the product folder
-            abspath = try realpath(joinpath(root, path))
-            catch err
-                if err isa Base.IOError
-                    @warn "'$path' does not exist in the product folder, skipping"
-                    Logging.with_logger(logger) do
-                        @warn "'$path' not found in the product folder, skip attaching"
-                    end
-                else
-                    @warn "unexpected error when accessing '$path' in the product folder, skipping path" err
-                    Logging.with_logger(logger) do
-                        @warn "unexpected error when accessing '$path' in the product folder, skip attaching" err
-                    end
-                end
-                continue
-            end
-            if path in inventory["extras"]
-                @info "'$path' already in extras, skipping"
-                Logging.with_logger(logger) do
-                    @info "'$path' already in extras, skip attaching"
-                end
-                continue
-            elseif !startswith(abspath, root)
-                @warn "'$path' is outside the product folder, skipping"
-                Logging.with_logger(logger) do
-                    @warn "'$path' is outside the product folder, skip attaching"
-                end
-                continue
-            end
-            Logging.with_logger(logger) do
-                @debug "attaching '$path' to extras"
-            end
-            # Save path after successful checks
-            attach_path!(inventory, path, logger)
-            # Ignore parent tree as well
-            for i = length(tree):-1:1
-                # Check, if parent is already ignored or known as parent
-                parent = normpath(tree[1:i]...)
-                parent in inventory["extras"] && break
-                parent = joinpath(parent, "")
-                parent in inventory["extras"] && break
-                push!(inventory["extras"], parent)
-                Logging.with_logger(logger) do
-                    @debug "attaching parent folder '$parent' to extras"
-                end
-            end
-        end
-        # Ensure non-empty Extras
-        isempty(inventory["extras"]) && delete!(inventory, "extras")
-        # Sort file list
-        sort!(inventory["extras"])
-        # Save inventory if updated
-        save_inventory(inventory, t0)
+    logger = init_logging(logfile, root, loglevel)
+    logex.with_logger(logger.file) do
+        @info "schedule attachment of extras to inventory" extras
+        @debug "parameters" loglevel
     end
+    # Attach extras and track updates
+    updated = _attach!(extradata, extras, root, logger)
+    if updated
+        inventory["metadata"]["database"]["updated"] = Dates.now()
+        inventory["extras"] = extradata
+    end
+    # Save and return updated inventory
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done attaching extras"
+    end
+    close(logger.file.logger.stream)
     return inventory
+end
+
+
+"""
+    _attach!(
+        extras::Vector{String},
+        attachments::Vector{String},
+        root::String,
+        logger::Logger
+    ) -> Bool
+
+Implementation of the attach process for wrapper function `attach!`.
+"""
+function _attach!(
+    extras::Vector{String},
+    attachments::Vector{String},
+    root::String,
+    logger::Logger
+)::Bool
+    # Track updates and loop over attachments
+    updated = false
+    for path in attachments
+        # Prepare path
+        # Create absolute path without trailing slash to check against location of product folder
+        path = normpath(root, chopsuffix(path, Base.Filesystem.path_separator))
+        # Only allow paths within the product folder
+        if startswith(path, root)
+            path = relpath(path, root)
+        else
+            logex.with_logger(logger.tee) do
+                @warn "'$path' is outside the product folder, skip attaching"
+            end
+            continue
+        end
+        # Only attach existing paths within the product folder
+        try realpath(joinpath(root, path))
+        catch err
+            if err isa Base.IOError
+                logex.with_logger(logger.tee) do
+                    @warn "'$path' not found in the product folder, skip attaching"
+                end
+            else
+                @warn("unexpected error when accessing '$path' in the product folder, "*
+                    "skipping path, see log file for details")
+                logex.with_logger(logger.file) do
+                    @warn("unexpected error when accessing '$path' in the product folder, skip attaching",
+                        exception = (err, catch_backtrace()))
+                end
+            end
+            continue
+        end
+        # Skip already attached paths
+        if path in extras
+            logex.with_logger(logger.tee) do
+                @info "'$path' already in extras, skip attaching"
+            end
+            continue
+        end
+        # Save path after successful checks
+        updated |= attach_path!(extras, path, logger.tee, logger.file)
+        # Ignore parent tree as well
+        tree = splitpath(path)[1:end-1]
+        for i = length(tree):-1:1
+            # Check, if parent is already ignored or known as parent
+            parent = normpath(tree[1:i]...)
+            parent in extras && break
+            parent = joinpath(parent, "")
+            parent in extras && break
+            push!(extras, parent)
+            logex.with_logger(logger.file) do
+                @debug("attaching parent folder '$parent' to extras")
+            end
+        end
+    end
+    # Sort file list
+    sort!(extras)
+    return updated
 end
 
 
@@ -441,7 +572,7 @@ end
     detach!(
         inventory::SortedDict,
         extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
-        logfile::String = "extras.log",
+        logfile::AbstractString = "logs/extras.log",
         loglevel::Symbol = :Debug
     ) -> SortedDict
 
@@ -451,49 +582,79 @@ For nested files and folders, the parent will be detached as well, if it contain
 data.
 
 The function returns the updated `inventory` and logs events with the specified `loglevel`
-to the `logfile`. A timestamp is appended to the log file name automatically.
+to the `logfile`. A timestamp is appended to the log file name automatically. The `logfile`
+may include a path (either absolute or relative to the product folder).
 
 See also: [`attach!`](@ref), [`clean!`](@ref), [`ignore!`](@ref), [`unignore!`](@ref)
 """
+function detach! end
+
 function detach!(
     inventory::SortedDict,
-    extras::Union{AbstractString,Vector{<:AbstractString}}=String[];
-    logfile::String = "extras.log",
+    extras::AbstractString;
+    logfile::AbstractString = "logs/extras.log",
     loglevel::Symbol = :Debug
 )::SortedDict
+    detach!(inventory, [String(extras)]; logfile, loglevel)
+end
+
+function detach!(
+    inventory::SortedDict,
+    extras::Vector{<:AbstractString};
+    logfile::AbstractString = "logs/extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    detach!(inventory, String.(extras); logfile, loglevel)
+end
+
+function detach!(
+    inventory::SortedDict,
+    extras::Vector{String}=Vector{String}();
+    logfile::AbstractString = "logs/extras.log",
+    loglevel::Symbol = :Debug
+)::SortedDict
+    # Start logging
+    logger = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
+    logex.with_logger(logger.file) do
+        @info "schedule detachment of extras from inventory" extras
+        @debug "parameters" loglevel
+    end
     # Initial checks
-    t0 = Dates.now()
     sleep(0.002) # ℹ ensure different updated time from t0
-    if !haskey(inventory, "extras")
-        @info "no extras section found in the inventory, nothing to detach"
+    if !haskey(inventory, "extras") || isempty(inventory["extras"])
+        logex.with_logger(logger.tee) do
+            @warn "no extras found in the inventory, nothing to detach"
+        end
+        close(logger.file.logger.stream)
         return inventory
-    elseif extras isa AbstractString
-        extras = [extras]
     elseif isempty(extras)
         delete!(inventory, "extras")
-        @info "all extras detached from the inventory"
+        logex.with_logger(logger.tee) do
+            @warn "detached all extras from the inventory"
+        end
         inventory["metadata"]["database"]["updated"] = Dates.now()
-        save_inventory(inventory, t0)
+        save_inventory(inventory, logger.tee, logger.start)
+        close(logger.file.logger.stream)
         return inventory
     end
-    # Start logging
-    logfile, level = init_logging(logfile, inventory["metadata"]["local"]["path"], loglevel)
-    @info "logging to '$logfile'"
-    open(logfile, "w") do logio
-        logger = Logging.ConsoleLogger(logio, level, show_limited=false)
-        # Detach all paths and parent folders exclusive to the given path
-        for path in extras
-            # ℹ relpath ensures no trailing slash in the path
-            isabspath(path) && (path = relpath(path, inventory["metadata"]["local"]["path"]))
-            detach_path!(inventory, path, logger) || continue
-            detach_parents!(inventory, path, logger)
-            inventory["metadata"]["database"]["updated"] = Dates.now()
-        end
-        # Remove empty extras section
-        isempty(inventory["extras"]) && delete!(inventory, "extras")
-        # Save inventory if updated
-        save_inventory(inventory, t0)
+    # Detach all paths and parent folders exclusive to the given path
+    for path in extras
+        # Ensure path without trailing slash
+        path = chopsuffix(normpath(path), Base.Filesystem.path_separator)
+        isabspath(path) && (path = relpath(path, inventory["metadata"]["local"]["path"]))
+        # Detach path tree
+        detach_path!(inventory, path, logger) || continue
+        detach_parents!(inventory, path, logger.tee)
+        inventory["metadata"]["database"]["updated"] = Dates.now()
     end
+    # Remove empty extras section
+    isempty(inventory["extras"]) && delete!(inventory, "extras")
+    # Save inventory if updated
+    save_inventory(inventory, logger.tee, logger.start)
+    logex.with_logger(logger.tee) do
+        @info "done detaching extras"
+    end
+    close(logger.file.logger.stream)
     return inventory
 end
 
@@ -521,8 +682,8 @@ function inventory_dates(
     folders, files = Set{String}(), Set{String}()
     root = inventory["metadata"]["local"]["path"]
     ext, newext = inventory["metadata"]["file"]["ext"], inventory["metadata"]["file"]["newext"]
-    # Define inventory as part of files to be kept
-    push!(files, joinpath(root, ".inventory.yaml"))
+    # Keep inventory files
+    push!(files, joinpath.(root, [".inventory.yaml", ".inventory.logs"])...)
     # Create year set for folder tracking
     years = Set{Int}()
     # Loop over filtered dates and granules
@@ -554,48 +715,37 @@ end
 
 """
     extrascan(
-        inventory::SortedDict,
-        path::String,
+        extrapaths::Vector,
+        path::AbstractString,
         database::@NamedTuple{folders::Set{String},files::Set{String}},
         waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
 Recursively scan the `path` for files and folders not present in the `database` and save them
-to `waste`. Allow paths listed as extras in the `inventory`. The function returns the `waste`.
+to `waste` unless listed in `extrapaths`. The function returns the `waste`.
 """
 function extrascan(
-    inventory::SortedDict,
-    path::String,
+    extrapaths::Vector,
+    path::AbstractString,
     database::@NamedTuple{folders::Set{String},files::Set{String}},
     waste::NamedTuple = (folders=Set{String}(),files=Set{String}())
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Scan path for extra files
     path_waste = localscan(database, path, setdiff)
-    # Check extras, if available
-    if haskey(inventory, "extras")
-        # Filter out allowed extras
-        extrapaths = joinpath.(inventory["metadata"]["local"]["path"], inventory["extras"])
-        filter!(!in(extrapaths), path_waste.folders)
-        filter!(!in(extrapaths), path_waste.files)
-        # Scan for possible parent folders with allowed nested extras
-        extras = joinpath.(path_waste.folders, "")
-        filter!(in(extrapaths), extras)
-        # ℹ Remove trailing slash from parent folder and search and remove for them in path_waste.folders
-        filter!(x -> !in(realpath(x), path_waste.folders), path_waste.folders)
-    else
-        extras = String[]
-    end
+    # Filter out allowed extras
+    filter!(!in(extrapaths), path_waste.folders)
+    filter!(!in(extrapaths), path_waste.files)
+    # Scan for possible parent folders with allowed nested extras
+    extras = joinpath.(path_waste.folders, "")
+    filter!(in(extrapaths), extras)
+    # ℹ Remove folders from waste folders that are classified as parents in extras
+    filter!(p -> p ∉ chopsuffix.(extrapaths, Base.Filesystem.path_separator), path_waste.folders)
     # Save waste of current path to overall waste
     union!(waste.folders, path_waste.folders)
     union!(waste.files, path_waste.files)
     # Recursively scan for nested extras
     for extra in extras
-        extrascan(
-            inventory,
-            extra,
-            database,
-            waste
-        )
+        extrascan(extrapaths, extra, database, waste)
     end
     return waste
 end
@@ -604,7 +754,7 @@ end
 """
     localscan(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        root::String,
+        root::AbstractString,
         combine::Function
     ) -> @NamedTuple{folders::Set{String},files::Set{String}}
 
@@ -615,7 +765,7 @@ with the `intersect` function.
 """
 function localscan(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    root::String,
+    root::AbstractString,
     combine::Function
 )::@NamedTuple{folders::Set{String},files::Set{String}}
     # Setup
@@ -630,8 +780,8 @@ end
 """
     _localscan!(
         database::@NamedTuple{folders::Set{String},files::Set{String}},
-        scanned::NamedTuple{(:folders, :files)},
-        root::String,
+        scanned::NamedTuple{(:folders,:files)},
+        root::AbstractString,
         combine::Function
     )
 
@@ -640,13 +790,14 @@ Recursive helper function for `localscan`. This allows a simpler API for `locals
 """
 function _localscan!(
     database::@NamedTuple{folders::Set{String},files::Set{String}},
-    scanned::NamedTuple{(:folders, :files)},
-    root::String,
+    scanned::NamedTuple{(:folders,:files)},
+    root::AbstractString,
     combine::Function
 )::Nothing
     # Get files and folders in root
     content = readdir(root, join=true)
-    files = filter(isfile, content)
+    # ℹ Make sure not to miss anything and list everything that is not a folder under files
+    files = filter(!isdir, content)
     folders = filter(isdir, content)
     # Save extra files and folders
     union!(scanned.folders, combine(folders, database.folders))
@@ -678,47 +829,45 @@ end
 
 """
     attach_path!(
-        inventory::SortedDict,
+        extras::Vector{String},
         path::AbstractString,
-        logger::Logging.AbstractLogger
-    )
+        logger::logex.AbstractLogger
+    ) -> Bool
 
-Attach a `path` to the `inventory` extras unless a parent folder is already ignored.
-Remove possible sub-folders of `path` previously attached to the `inventory`.
+Attach a `path` to the `extras` unless a parent folder is already ignored.
+Remove possible sub-folders of `path` previously attached to the `extras`.
 Log events to the provided `logger`.
 """
 function attach_path!(
-    inventory::SortedDict,
+    extras::Vector{String},
     path::AbstractString,
-    logger::Logging.AbstractLogger
-)::Nothing
+    tee_logger::logex.AbstractLogger,
+    file_logger::logex.AbstractLogger
+)::Bool
     # Check parent folders are not already attached
     parts = splitpath(path)[1:end-1]
     paths = [joinpath(parts[1:i]...) for i in 1:length(parts)]
-    if !isdisjoint(inventory["extras"], paths)
-        @info "parent folder of '$path' already attached, skipping"
-        Logging.with_logger(logger) do
+    if !isdisjoint(extras, paths)
+        logex.with_logger(tee_logger) do
             @info "parent folder of '$path' already attached, skip attaching"
         end
-        return
+        return false
     end
     # Remove previously ignored subpaths from inventory extras
-    paths = filter(startswith(path), inventory["extras"])
+    paths = filter(startswith(path), extras)
     if !isempty(paths)
-        @info "removing previously attached sub-paths of '$path'" paths
-        Logging.with_logger(logger) do
-            @info "removing previously attached sub-paths of '$path'" paths
+        logex.with_logger(tee_logger) do
+            @info("removing previously attached sub-paths of '$path'",
+                paths = filter(!isequal(joinpath(path, "")), paths))
         end
-        filter!(!in(paths), inventory["extras"])
+        filter!(!in(paths), extras)
     end
     # Attach path
-    push!(inventory["extras"], path)
-    @debug "attached '$path' to extras"
-    Logging.with_logger(logger) do
+    push!(extras, path)
+    logex.with_logger(file_logger) do
         @debug "attached '$path' to extras"
     end
-    inventory["metadata"]["database"]["updated"] = Dates.now()
-    return
+    return true
 end
 
 
@@ -726,7 +875,7 @@ end
     detach_path!(
         inventory::SortedDict,
         path::AbstractString,
-        logger::Logging.AbstractLogger
+        logger::Logger
     ) -> Bool
 
 Detach the given `path` from the `inventory` extras including any sub-folders within the `path`.
@@ -736,21 +885,24 @@ Log events to the provided `logger`.
 function detach_path!(
     inventory::SortedDict,
     path::AbstractString,
-    logger::Logging.AbstractLogger
+    logger::Logger
 )::Bool
     #* Check for path in inventory extras
     # Check, if path itself is attached or if path is a parent folder to an attached path
     parent = if path in inventory["extras"]
         false
     else
-        path = joinpath(path, "")
-        true
+        if isdir(joinpath(inventory["metadata"]["local"]["path"], path))
+            path = joinpath(path, "")
+            true
+        else
+            false
+        end
     end
     # Skip missing paths
     if path ∉ inventory["extras"]
-        @info "'$path' not found in extras, skipping"
-        Logging.with_logger(logger) do
-            @info "'$path' not found in extras, skip detaching"
+        logex.with_logger(logger.tee) do
+            @warn "'$path' not found in extras, skip detaching"
         end
         return false
     end
@@ -758,14 +910,12 @@ function detach_path!(
     extras = filter(startswith(path), inventory["extras"])
     filter!(!in(extras), inventory["extras"])
     if parent
-        @warn "detached a parent folder including other extras" extras
-        Logging.with_logger(logger) do
-            @info "detached a parent folder including other extras" extras
+        logex.with_logger(logger.tee) do
+            @warn "detached a parent folder including other extras" extras
         end
     else
-        @warn "detached '$path' from extras"
-        Logging.with_logger(logger) do
-            @info "detached '$path' from extras"
+        logex.with_logger(logger.file) do
+            @debug "detached '$path' from extras"
         end
     end
     #* Ensure inventory updates are saved later
@@ -778,7 +928,7 @@ end
     detach_parents!(
         inventory::SortedDict,
         path::AbstractString,
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     )
 
 Detach parent folders that are exclusive to the given `path` from the `inventory` extras.
@@ -786,8 +936,8 @@ Log events to the provided `logger`.
 """
 function detach_parents!(
     inventory::SortedDict,
-    path::String,
-    logger::Logging.AbstractLogger,
+    path::AbstractString,
+    logger::logex.AbstractLogger,
 )::Nothing
     parts = splitpath(path)[1:end-1]
     paths = [joinpath(parts[1:i]..., "") for i in length(parts):-1:1]
@@ -795,49 +945,36 @@ function detach_parents!(
         parents = filter(startswith(path), inventory["extras"])
         length(parents) == 1 || continue
         filter!(!isequal(parents[1]), inventory["extras"])
-        @info "detached parent '$(parents[1])' from extras"
-        Logging.with_logger(logger) do
-            @info "detached parent '$(parents[1])' from extras"
+        logex.with_logger(logger) do
+            @debug "detached parent '$(parents[1])' from extras"
         end
     end
 end
 
 
-## Helper functions for user interaction
+## Helper functions to remember log files
 
 """
-    log_ignore(
-        logger::Logging.AbstractLogger,
-        granules::Vector{String},
-        msg::AbstractString,
-        screenmsg::AbstractString="";
-        level::Logging.LogLevel=Logging.Info
-    )
+    get_logs(root::String) -> Tuple{Vector{String},Vector{String}}
 
-For non-empty `granules`, log the `msg` to the `logger` and print `screenmsg` to the console.
-If `screenmsg` is empty, `msg` is used for both logging and console output.
-The log level can be specified with `level`.
+Retrieve previous log files from the `.inventory.logs` file in the `root` folder.
+Return two vectors with log files inside and outside the `root` folder.
 """
-function log_ignore(
-    logger::Logging.AbstractLogger,
-    granules::Vector{String},
-    msg::AbstractString,
-    screenmsg::AbstractString="";
-    level::Logging.LogLevel=Logging.Info
-)::Nothing
-    isempty(granules) && return
-    isempty(screenmsg) && (screenmsg = msg)
-    Logging.@logmsg level screenmsg granules _module=nothing _file=nothing _line=nothing
-    Logging.with_logger(logger) do
-        Logging.@logmsg level granules msg _module=nothing _file=nothing _line=nothing
+function get_logs(root::String)::Tuple{Vector{String},Vector{String}}
+    # ℹ Use "a+" append mode to suppress errors for non-existing files
+    logfiles = open(joinpath(root, ".inventory.logs"), "a+") do io
+        seekstart(io)
+        readlines(io)
     end
+    filter(!startswith(".."), logfiles), filter(startswith(".."), logfiles)
 end
 
+## Helper functions for user interaction
 
 """
     confirm(
         extra::@NamedTuple{folders::Set{String},files::Set{String}},
-        logger::Logging.AbstractLogger
+        logger::logex.AbstractLogger
     ) -> Bool
 
 Prompt the user to confirm the deletion of files and folders listed in `extra`.
@@ -846,19 +983,18 @@ Log events to the provided `logger`.
 """
 function confirm(
     extra::@NamedTuple{folders::Set{String},files::Set{String}},
-    logger::Logging.AbstractLogger
+    logger::logex.AbstractLogger
 )::Bool
     # Nothing to clean
     if isempty(extra.folders) && isempty(extra.files)
         @info "no extra files or folders found, nothing to clean"
-        Logging.with_logger(logger) do
+        logex.with_logger(logger) do
             @info "no extra files or folders found"
         end
         return true
     end
     # Initial warning
-    @warn("The following paths are not part of the inventory and will be removed.",
-        _module=nothing, _file=nothing, _line=nothing)
+    @warn "The following paths are not part of the inventory and will be removed."
     # List folders
     if !isempty(extra.folders)
         printstyled("Folders:\n", color=:yellow, bold=true)
@@ -890,7 +1026,7 @@ function display_size(size::Integer)::String
     s = (size |> digits |> length) - 1
     s = min(s÷3, 4)
     unit = Dict(0=>"B", 1=>"kB", 2=>"MB", 3=>"GB", 4=>"TB")
-    return string(round(size / 10^3s, digits=2), unit[s])
+    return string(round(size / 10^3s, digits=2), " ", unit[s])
 end
 
 
@@ -955,14 +1091,41 @@ function print_year_stats(
     dates::Vector{Date},
     finish::Bool = false
 )::Nothing
-    stats = inventory_stats(inventory, dates, by_year=true)
+    # Get statistics
+    stats = inventory_stats(inventory, dates)
+    filecount = stats["filecount"]
+    pc_downloads, pc_conversions = if filecount > 0
+        round(stats["downloaded files"] / filecount * 100, digits=2),
+        round(stats["converted files"] / filecount * 100, digits=2)
+    else
+        0.0, 0.0
+    end
+    ratio = inventory["metadata"]["database"]["size"]["compression-ratio"]
+    total_download = stats["total download"]
+    converted_size = pc_conversions == 100 ?
+        stats["converted size"] : round(Int, total_download * ratio)
+    pc_downloaded_size = total_download > 0 ?
+        round(stats["downloaded size"] / total_download * 100, digits=2) : 0.0
+    pc_converted_size = converted_size > 0 ?
+        round(stats["converted size"] / converted_size * 100, digits=2) : 0.0
+    # Define links in file tree
     y = finish ? "└─" : "├─"
     d = finish ? " " : "│"
+    # Define and print year stats
+    nfiles, pc_files = if isempty(inventory["metadata"]["file"]["newext"])
+        "", ""
+    else
+        "/$(stats["converted files"])", "/$pc_conversions%"
+    end
     println("$y $year")
-    println("$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: $(stats["downloaded files"])/",
-        "$(stats["converted files"]) of $(stats["filecount"]) files – ",
-        "$(display_size(stats["downloaded size"]))/$(display_size(stats["converted size"])) ",
-        "of $(display_size(stats["size"])) ... $(Dates.format(dates[end], "yyyy_mm_dd"))")
-    finish && println('\n')
+    yearstats = "$d  └─ $(Dates.format(dates[1], "yyyy_mm_dd")) ... $(stats["dates"]) dates: "*
+        "$(stats["downloaded files"])$nfiles out of $(stats["filecount"]) files "*
+        "($pc_downloads%$pc_files) – $(display_size(stats["downloaded size"]))/"*
+        "$(display_size(total_download)) ($pc_downloaded_size%)"
+    isempty(inventory["metadata"]["file"]["newext"]) || (yearstats *=
+        " — $(display_size(stats["converted size"]))/$(display_size(converted_size)) ($pc_converted_size%)")
+    yearstats *= " ... $(Dates.format(dates[end], "yyyy_mm_dd"))"
+    println(yearstats)
+    finish && println()
     return
 end

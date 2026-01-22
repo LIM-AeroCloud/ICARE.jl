@@ -7,6 +7,79 @@ EditURL = "https://github.com/LIM-AeroCloud/ICARE.jl/blob/master/CHANGELOG.md"
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [UNRELEASED]
+
+### Added
+
+- Add [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl) as dependency ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- New logger `PrettyFileLogger` based on `FileLogger` from
+  [LoggingExtras.jl](https://github.com/JuliaLogging/LoggingExtras.jl)
+  wrapping a `ConsoleLogger` instead of `SimpleLogger` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+  - the new logger suppresses module, file, and line information and expands the display of arrays
+- **Breaking:** Previous log files are now saved to a `.inventory.logs` file and remembered
+  for clean-up. This allows cleaning of log files outside the product folder ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28)).
+- `global_logger` is now formatted during package init ([#33](https://github.com/LIM-AeroCloud/ICARE.jl/issues/33))
+- New Changelog for the inventory in the documentation as separate Changelog from this one
+- Add kwarg `save_migrations` to `load_inventory` to save any inventory migrations when
+  `load_inventory` is called by default ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
+- Add new automatic detection for conversion during download. Now, `.hdf` files are converted to
+  `.h5`, otherwise conversion is switched off. The `convert` flag in `sftp_download` can still be
+  used to enforce conversion to be switched on/off.
+- Add release automation for the update of the inventory changelog after version updates ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
+- Added GitHub Actions scripts and adjusted the pre-release script to completely automate the 
+  release process ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
+- Added changelog enforcer GitHub Action to ensure, a changelog entry was made unless the
+  `no change` label is set ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
+
+### Changed
+
+- **Breaking:** Refine logging in `load_inventory` ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35)). Rather than defining an additional
+  logger with the second optional argument (for additional file logging), `global_logger` is
+  now replaced by the logger in the second optional argument. If you want logging to console
+  and file, use e.g. `TeeLogger` from
+  [LoggingExtras](https://github.com/JuliaLogging/LoggingExtras.jl?tab=readme-ov-file).
+  This allows logging in wrapper functions like `convert_inventory` for `convert_inventory!`.
+- **Breaking:** Change function names of `convert`/`convert!` to `convert_inventory[!]` to
+  avoid type piracy ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- All API functions now accept `AbstractString` instead of the stricter `String`
+- Improved Logging ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- Don't consider folder sizes for database size, this is too buggy and inaccurate
+- Use thin spaces between size and unit to log to console and file
+- **Breaking:** Save log files to a `logs` folder instead of the product folder by default.
+  If the folder doesn't exist, it will be created ([#34](https://github.com/LIM-AeroCloud/ICARE.jl/issues/34)).
+- Don't log debug logs of successful attachment to console to be in line with the other sync
+  functions. This should not have an impact as the default console log level is Info ([#34](https://github.com/LIM-AeroCloud/ICARE.jl/issues/34)).
+- **Breaking:** If the log file name includes a relative path, it is now relative to the product
+  folder rather than the current directory ([#46](https://github.com/LIM-AeroCloud/ICARE.jl/issues/46)).
+- Internal refactoring:
+  - Use `Logger` struct instead of named tuple to pass on different loggers ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Separate implementation of `attach!` to an internal `_attach!` function that can be used
+    by `clean!` ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Operate `extrascan` and `attach_path!` on a `Vector{String}` rather then the extras section
+    of the inventory ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+  - Filter files with `!isdir` rather than `isfile` to be sure to not miss any path objects like
+    symlinks, which will now be listed under files ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28))
+- Change format of the inventory metadata, added a compression ratio,
+  see inventory changelog in the
+  [documentation](https://lim-aerocloud.github.io/ICARE.jl/dev/inventory.html#Inventory-Changelog),
+  added a migration routine that will convert old inventories to the new format ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
+- Update the output of `list_inventory` to consider the new possibilities with the compression
+  ratio ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
+
+### Removed
+
+- **Breaking:** Remove functions `convert`/`convert!` in favour of `convert_inventory[!]`
+  to avoid type piracy ([#35](https://github.com/LIM-AeroCloud/ICARE.jl/issues/35))
+- **Breaking:** Remove kwarg `keepext` from `clean!`. The implementation was buggy working only
+  for files in inventory folders not in subfolders and cleaning could be ambiguous with the new
+  `logs` option ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28)).
+
+### Fixed
+
+- Corrected calculation of inventory stats that was showing a wrong download intent ([#44](https://github.com/LIM-AeroCloud/ICARE.jl/issues/44))
+- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
+  Now symlinks are followed and the correct stats are derived ([#42](https://github.com/LIM-AeroCloud/ICARE.jl/issues/42)).
+
 ## [v0.6.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0) - 2025-12-27
 
 ### Added

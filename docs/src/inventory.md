@@ -1,9 +1,9 @@
-# Analysing and manipulating the inventory
+# The database inventory
 
 ## Analysing the inventory
 
 The structure and files including file stats are saved in an inventory that is returned by most
-API functions like [`sftp_download`](@ref), [`clean!`](@ref), [`convert!`](@ref), and [`convert`](@ref).
+API functions like [`sftp_download`](@ref), [`clean!`](@ref), [`convert_inventory!`](@ref), and [`convert_inventory`](@ref).
 The inventory is a `SortedDict` that saves relevant data such as the available data range,
 the file count and the overall size in the metadata. Stats about the data files are kept in the
 `"dates"` section and missing dates are listed in `"gaps"`. Function [`list_inventory`](@ref)
@@ -14,6 +14,11 @@ Any function relying on the inventory will load it when needed. However, the inv
 be loaded on its own with [`load_inventory`](@ref). For many functions, convenience methods exist
 that load the inventory from the hidden `.inventory.yaml` in the product folder and more
 performant methods exist using the preloaded inventory, skipping the load step.
+
+!!! warning "Important notice"
+    There is no public function to save the inventory. This is done automatically every time
+    the inventory is updated by any _ICARE_ function. Users should not have to save the inventory
+    manually and should not attempt to do so as a wrong format might lead to unintended errors.
 
 ```@docs
 load_inventory
@@ -26,17 +31,17 @@ Several functions exist to help shaping the database to the users need.
 
 ### Batch conversions
 
-Methods [`convert`](@ref)/[`convert!`](@ref) can be used to convert data files to a new file format.
+Methods [`convert_inventory`](@ref)/[`convert_inventory!`](@ref) can be used to convert data files to a new file format.
 By default, HDF4 files are upgraded to HDF5. The same could be achieved by re-running
 [`sftp_download`](@ref) with `convert` option set to `true`. If the original files are already
 downloaded, then [`sftp_download`](@ref) will not re-download these files and just convert them.
-If you have already loaded the inventory, then [`convert!`](@ref) is the more performant option;
-[`convert`](@ref) is a convenience method that will load the inventory first and then call
-[`convert!`](@ref).
+If you have already loaded the inventory, then conversion with [`convert_inventory!`](@ref) is
+the more performant option; [`convert_inventory`](@ref) is a convenience method that will load
+the inventory first and then call [`convert_inventory!`](@ref).
 
 ```@docs
-convert(::String)
-convert!
+convert_inventory
+convert_inventory!
 ```
 
 ### Cleaning up the inventory
@@ -106,3 +111,42 @@ Function [`attach!`](@ref) can be used to flag files and folders as `extras` and
 attach!
 detach!
 ```
+
+## Inventory Changelog
+
+The inventory has its own version. Like the _ICARE_ package, the inventory follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses
+[Keep a Changelog style](https://keepachangelog.com/en/1.1.0/).
+
+However, non-breaking changes in the inventory might lead to breaking changes in the _ICARE_
+package and, conversely, breaking changes in the inventory need not necessarily be breaking in
+_ICARE_. Therefore, separate versions and changelogs are introduced for the package and its
+inventory.
+
+### [v2.0.0] - 2026-01-22
+
+#### Added
+
+- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
+
+#### Changed
+
+- Reordered entries in `inventory["metadata"]["database"]` with `start` and `stop` date directly
+  after `dates` and `missing` data.
+- Made `size` a sub-dictionary with entries `total`, `downloaded`, and `converted` instead of
+  the entries `"downloaded size"` and `"converted size"`. This avoids quoted multi-word keys 
+  in the inventory.
+
+### [v1.0.0] - 2025-12-27
+
+#### Added
+
+- First stable version of the inventory (being tracked from now on) with sections for
+  - `dates` holding file stats of all available granules for all available dates
+  - `extras` marking path objects in the local product folder that are considered attached to
+    the inventory, but not part of the inventory, and will be refrained from cleaning processes
+  - `ignore` marking inventory data (e.g. corrupt granules) that are not considered part of the
+    local database and will not be downloaded or will be removed during cleaning processes
+  - `gaps` holding all dates in the inventory time span with no data available
+  - `metadata` with statistics about the inventory, e.g. available dates, sizes, file counts, etc.
+    and information needed for processing the inventory

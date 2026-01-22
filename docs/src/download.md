@@ -141,7 +141,7 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
 
 !!! tip
     If you want both formats saved on your local machine, download the original format with
-    [`sftp_download`](@ref) by setting `convert` to `false`. Use the [`convert!`](@ref) method
+    [`sftp_download`](@ref) by setting `convert` to `false`. Use the [`convert_inventory!`](@ref) method
     to upgrade the downloaded files to the new format.
 
     If your run [`sftp_download`](@ref) with `convert=true` the first time, original downloads
@@ -151,4 +151,4 @@ By default, this will save downloads in the HDF5 (`.h5`) format instead of the e
 ### Separate file conversions
 
 Routines exist to do batch conversions of the existing files and are described in the section
-about [Analysing and manipulating the inventory](@ref).
+about [The database inventory](@ref).

@@ -1,0 +1,95 @@
+name: Auto-merge Release PRs
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [labeled, ready_for_review]
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'automated') &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+
+    steps:
+      - name: Check approval status
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const approvals = reviews.filter(review => review.state === 'APPROVED');
+            const hasApproval = approvals.length > 0;
+
+            core.setOutput('approved', hasApproval);
+
+            if (hasApproval) {
+              console.log(`PR has ${approvals.length} approval(s)`);
+            } else {
+              console.log('PR has no approvals yet');
+            }
+
+      - name: Check CI status
+        id: ci
+        uses: actions/github-script@v7
+        if: steps.check.outputs.approved == 'true'
+        with:
+          script: |
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+
+            const allPassed = checkRuns.check_runs
+              .filter(run => run.name !== 'Auto-merge Release PRs')  // Exclude this workflow
+              .every(run => run.conclusion === 'success' || run.conclusion === 'skipped');
+
+            core.setOutput('passed', allPassed);
+
+            if (allPassed) {
+              console.log('All CI checks passed');
+            } else {
+              console.log('CI checks not yet complete or failed');
+            }
+
+      - name: Comment on PR before merge
+        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '✅ Approval and CI checks confirmed. Proceeding with automated merge.'
+            });
+
+      - name: Enable auto-merge
+        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              merge_method: 'merge',  // Use merge commit for release PRs
+              commit_title: `Merge pull request #${context.payload.pull_request.number} from ${context.repo.owner}/${context.payload.pull_request.head.ref}`,
+              commit_message: 'Automated merge after approval and successful CI checks'
+            });
+
+            console.log('PR merged successfully');
+
+      - name: Delete release branch
+        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true' && github.event.pull_request.base.ref == 'dev'
+        run: |
+          git push origin --delete ${{ github.event.pull_request.head.ref }}

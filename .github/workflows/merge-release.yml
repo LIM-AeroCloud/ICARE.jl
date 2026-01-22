@@ -1,0 +1,65 @@
+name: Merge Release to Dev
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches:
+      - 'rel/**'
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH=${{ github.event.workflow_run.head_branch }}
+          VERSION=${BRANCH#rel/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request to main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "${{ steps.version.outputs.branch }}" --base main --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for this branch"
+            exit 0
+          fi
+
+          # Create PR
+          gh pr create \
+            --head "${{ steps.version.outputs.branch }}" \
+            --base main \
+            --title "Release ${{ steps.version.outputs.version }}" \
+            --label "release,automated,no change" \
+            --body "$(cat <<'EOF'
+          ## Release ${{ steps.version.outputs.version }}
+
+          This PR merges the release branch `${{ steps.version.outputs.branch }}` into `main`.
+
+          ✅ CI has passed on the release branch
+          ✅ Pre-release script has updated version and documentation
+
+          **Action required:** Please review and approve this PR to continue the automated release process.
+
+          Once approved and merged:
+          - A git tag `v${{ steps.version.outputs.version }}` will be created on main
+          - A GitHub release will be published
+          - Post-release automation will create a PR to dev with the next DEV version
+          EOF
+          )"
+
+          echo "✅ PR created successfully for release ${{ steps.version.outputs.version }}"

@@ -42,6 +42,22 @@ end
 Base.show(io::IO, file::File)::Nothing = print(io, "File($(file.name)$(file.ext))")
 
 
+#* Logging
+
+"""
+# Logger{F,T} where {F<:Logging.AbstractLogger,T<:Logging.AbstractLogger}
+
+A container to hold different loggers meant for a `file` logger and a `tee` logger for simultaneous
+file and console logging. Additionally, the log `filename` and `start` time is stored.
+"""
+struct Logger{F<:Logging.AbstractLogger,T<:Logging.AbstractLogger}
+    file::F
+    tee::T
+    filename::String
+    start::DateTime
+end
+
+
 #* Exceptions
 
 """
