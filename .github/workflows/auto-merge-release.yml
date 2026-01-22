@@ -61,6 +61,18 @@ jobs:
               console.log('CI checks not yet complete or failed');
             }
 
+      - name: Comment on PR before merge
+        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '✅ Automated merge will proceed after approval and successful CI checks.'
+            });
+
       - name: Enable auto-merge
         if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true'
         uses: actions/github-script@v7
@@ -76,15 +88,3 @@ jobs:
             });
 
             console.log('PR merged successfully');
-
-      - name: Comment on PR
-        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: '✅ Automated merge completed after approval and successful CI checks.'
-            });

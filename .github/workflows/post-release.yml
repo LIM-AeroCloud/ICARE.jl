@@ -16,12 +16,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: dev  # Checkout dev branch to create post-release branch from it
           fetch-depth: 0
 
       - name: Extract version from tag
         id: version
         run: |
+          # Version comes from the tag that triggered this workflow (via GITHUB_REF)
           TAG=${GITHUB_REF#refs/tags/v}
           echo "version=$TAG" >> $GITHUB_OUTPUT
           echo "Tagged version: $TAG"
@@ -97,23 +98,36 @@ jobs:
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request to dev
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ steps.version.outputs.branch }}
-          base: dev
-          title: "Post-release v${{ steps.version.outputs.version }} - Bump to next DEV version"
-          body: |
-            ## Post-release v${{ steps.version.outputs.version }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "${{ steps.version.outputs.branch }}" --base dev --json number --jq '.[0].number')
 
-            This PR completes the release process by merging the next development version into `dev`.
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for this branch"
+            exit 0
+          fi
 
-            ✅ Release v${{ steps.version.outputs.version }} has been published
-            ✅ Version bumped to next minor DEV version
-            ✅ CI has passed on the post-release branch
+          # Create PR
+          gh pr create \
+            --head "${{ steps.version.outputs.branch }}" \
+            --base dev \
+            --title "Post-release v${{ steps.version.outputs.version }} - Bump to next DEV version" \
+            --label "release,automated" \
+            --body "$(cat <<'EOF'
+          ## Post-release v${{ steps.version.outputs.version }}
 
-            **Action required:** Please review and approve this PR to complete the automated release process.
+          This PR completes the release process by merging the next development version into `dev`.
 
-            Once approved and merged, the release process is complete and development can continue on dev.
-          labels: release,automated
-          draft: false
+          ✅ Release v${{ steps.version.outputs.version }} has been published
+          ✅ Version bumped to next minor DEV version
+          ✅ CI has passed on the post-release branch
+
+          **Action required:** Please review and approve this PR to complete the automated release process.
+
+          Once approved and merged, the release process is complete and development can continue on dev.
+          EOF
+          )"
+
+          echo "PR created successfully"

@@ -27,12 +27,6 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Added changelog enforcer GitHub Action to ensure, a changelog entry was made unless the
   `no-docs` label is set ([#50])
 
-### Fixed
-
-- Corrected calculation of inventory stats that was showing a wrong download intent ([#44])
-- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
-  Now symlinks are followed and the correct stats are derived ([#42]).
-
 ### Changed
 
 - **Breaking:** Refine logging in `load_inventory` ([#35]). Rather than defining an additional
@@ -75,6 +69,12 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - **Breaking:** Remove kwarg `keepext` from `clean!`. The implementation was buggy working only
   for files in inventory folders not in subfolders and cleaning could be ambiguous with the new
   `logs` option ([#28]).
+
+### Fixed
+
+- Corrected calculation of inventory stats that was showing a wrong download intent ([#44])
+- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
+  Now symlinks are followed and the correct stats are derived ([#42]).
 
 ## [v0.6.0] - 2025-12-27
 

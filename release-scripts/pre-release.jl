@@ -14,6 +14,7 @@ function get_version()::VersionNumber
     close(out.in)
     rel = @async String(read(out))
     rel = String(read(out)) |> chomp
+    startswith(rel, "rel/") || throw(ArgumentError("wrong release branch name format: $rel; should start with 'rel/'"))
     return VersionNumber(rel[5:end])
 end
 
@@ -55,12 +56,12 @@ project = joinpath(@__DIR__, "..", "Project.toml")
 lines = readlines(project)
 # Set release version
 vstring = "version = "
-package_version = v_new = get_version()
+vpkg_new = get_version()
 i = findfirst(startswith(vstring), lines)
 m = match(r"\"(?<version>[^\"]+)\"", lines[i])
-v_old = VersionNumber(m["version"])
-lines[i] = vstring * "\"$(v_new)\""
-check_update(v_old, v_new, "package")
+vpkg_old = VersionNumber(m["version"])
+lines[i] = vstring * "\"$(vpkg_new)\""
+check_update(vpkg_old, vpkg_new, "package")
 
 # Save to Project.toml
 open(project, "w+") do io
@@ -75,7 +76,7 @@ i = findfirst(isequal("## [unreleased]"), lowercase.(lines))
 if isnothing(i)
     throw(ArgumentError("No unreleased version found in changelog"))
 end
-lines[i] = "## [v$v_new] - $(Dates.today())"
+lines[i] = "## [v$vpkg_new] - $(Dates.today())"
 open(changelog, "w+") do io
     println.(io, lines)
 end
@@ -87,7 +88,7 @@ i = findfirst(contains(r"<text.*>v"), lines)
 if isnothing(i)
     throw(ArgumentError("No version in badge found in docs/src/assets/badge.svg"))
 end
-lines[i] = replace(lines[i], r">v[0-9.]+" => ">v$v_new")
+lines[i] = replace(lines[i], r">v[0-9.]+" => ">v$vpkg_new")
 open(badge, "w+") do io
     println.(io, lines)
 end
@@ -99,7 +100,7 @@ i = findfirst(contains("/v"), lines)
 if isnothing(i)
     throw(ArgumentError("No version link found in README.md"))
 end
-lines[i] = replace(lines[i], r"/v[0-9.]+" => "/v$v_new")
+lines[i] = replace(lines[i], r"/v[0-9.]+" => "/v$vpkg_new")
 open(readme, "w+") do io
     println.(io, lines)
 end
@@ -144,10 +145,10 @@ open(changelog, "w+") do io
     println.(io, lines)
 end
 ## Create marker file to indicate successful completion
-marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(package_version)")
+marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(vpkg_new)")
 open(marker_file, "w") do io
-    println(io, "Pre-release completed successfully for v$(package_version)")
+    println(io, "Pre-release completed successfully for v$(vpkg_new)")
     println(io, "Timestamp: $(Dates.now())")
 end
 
-@info "Pre-release script completed successfully for v$(package_version)" marker_file
+@info "Pre-release script completed successfully for v$(vpkg_new)" marker_file
