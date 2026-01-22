@@ -95,7 +95,7 @@ jobs:
         id: version
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
-          BRANCH="post-rel/$TAG"
+          BRANCH="rel/$TAG"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
