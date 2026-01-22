@@ -3,7 +3,7 @@
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The format of the release notes follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [UNRELEASED]
+## [v0.7.0] - 2026-01-22
 
 ### Added
 

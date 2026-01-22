@@ -8,7 +8,7 @@ A Julia package for retrieving data from the
 
 | **Release** | **Documentation**                                                                  | **Build Status**                                                          |
 |:----------------------------------------------------------------------------------:|:-------------------------------------------------------------------------:|:---:|
-| <a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0"><img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a> | [![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url] | [![Build Status][CI-img]][CI-url] |
+| <a href="https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.7.0"><img src="docs/src/assets/badge.svg" alt="version badge" width="120"></a> | [![Stable][docs-stable-img]][docs-stable-url] [![Dev][docs-dev-img]][docs-dev-url] | [![Build Status][CI-img]][CI-url] |
 
 Use function `sftp_download` to retrieve missing data files in a specified time frame.
 Routines are developed to retrieve CALIOP aerosol and cloud data, but will work for any
