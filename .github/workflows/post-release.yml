@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: dev  # Checkout dev branch to create post-release branch from it
+          ref: dev  # Checkout dev branch
           fetch-depth: 0
 
       - name: Extract version from tag
@@ -26,15 +26,18 @@ jobs:
           echo "version=$TAG" >> $GITHUB_OUTPUT
           echo "Tagged version: $TAG"
 
-          # Create post-release branch name
-          BRANCH="post-rel/v$TAG"
+          # Use the same release branch that was used for the release
+          BRANCH="rel/v$TAG"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Prepare branch
+      - name: Fetch and checkout release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b ${{ steps.version.outputs.branch }}
+
+          # Fetch the release branch
+          git fetch origin ${{ steps.version.outputs.branch }}:${{ steps.version.outputs.branch }}
+          git checkout ${{ steps.version.outputs.branch }}
 
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
@@ -112,7 +115,7 @@ jobs:
           gh pr create \
             --head "${{ steps.version.outputs.branch }}" \
             --base dev \
-            --title "Post-release v${{ steps.version.outputs.version }} - Bump to next DEV version" \
+            --title "Merge release changes back to dev" \
             --label "release,automated" \
             --body "$(cat <<'EOF'
           ## Post-release v${{ steps.version.outputs.version }}

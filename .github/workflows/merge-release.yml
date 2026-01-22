@@ -44,7 +44,7 @@ jobs:
             --head "${{ steps.version.outputs.branch }}" \
             --base main \
             --title "Release ${{ steps.version.outputs.version }}" \
-            --label "release,automated" \
+            --label "release,automated,no change" \
             --body "$(cat <<'EOF'
           ## Release ${{ steps.version.outputs.version }}
 

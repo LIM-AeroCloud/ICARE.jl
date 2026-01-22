@@ -83,8 +83,13 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
               merge_method: 'merge',  // Use merge commit for release PRs
-              commit_title: context.payload.pull_request.title,
+              commit_title: `Merge pull request #${context.payload.pull_request.number} from ${context.repo.owner}/${context.payload.pull_request.head.ref}`,
               commit_message: 'Automated merge after approval and successful CI checks'
             });
 
             console.log('PR merged successfully');
+
+      - name: Delete release branch
+        if: steps.check.outputs.approved == 'true' && steps.ci.outputs.passed == 'true' && github.event.pull_request.base.ref == 'dev'
+        run: |
+          git push origin --delete ${{ github.event.pull_request.head.ref }}
