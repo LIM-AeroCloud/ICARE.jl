@@ -16,7 +16,7 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 [compat]
 DataStructures = "0.19.1"
 Dates = "1.10"
-Logging = "1.11.0"
+Logging = "1.10"
 LoggingExtras = "1"
 Printf = "1.10"
 ProgressMeter = "1.10"
