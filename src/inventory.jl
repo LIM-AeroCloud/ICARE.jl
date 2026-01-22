@@ -13,7 +13,7 @@ to a `SortedDict`, which can be processed by other ICARE functions. By default, 
 of the inventory are upgraded and saved to the `.inventory.yaml`. Updating the inventory file
 can be prevented by setting the kwarg `save_migrations` to `false`.
 
-If a `logger` is provided, events are logged to it in addition to the global logger
+If a `logger` is provided, events are logged to `logger` instead of the global logger
 (typically the console).
 
 See also: [`list_inventory`](@ref)
@@ -60,7 +60,6 @@ The whole inventory can be updated by setting `resync` to `true`.
 Additional checks are performed, whether the `root` folder was moved. In that case, the
 inventory is updated and a warning is issued.
 The target file extension for converted files is set based on the `convert` option.
-The `logger` parameter should be a NamedTuple with `file` and `tee` logger fields.
 Updates are logged to the screen and the log file with `logger`.
 The function returns the updated `convert` option as `Bool`, for `nothing` standard conversions
 are set to `true`, otherwise no conversion is performed.

@@ -47,10 +47,10 @@ function sftp_download(
     version::Union{Nothing,Real} = 4.51,
     remoteroot::AbstractString = "/SPACEBORNE/CALIOP/",
     localroot::AbstractString = ".",
-    convert::Bool = true,
+    convert::Union{Nothing,Bool} = nothing,
     resync::Bool = false,
     update::Bool = false,
-    logfile::AbstractString = "downloads.log",
+    logfile::AbstractString = "logs/downloads.log",
     loglevel::Symbol = :Debug
 )::SortedDict
 ```

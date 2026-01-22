@@ -27,7 +27,7 @@ jobs:
           echo "Tagged version: $TAG"
 
           # Use the same release branch that was used for the release
-          BRANCH="rel/v$TAG"
+          BRANCH="rel/$TAG"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
 
       - name: Fetch and checkout release branch
@@ -95,7 +95,7 @@ jobs:
         id: version
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
-          BRANCH="post-rel/v$TAG"
+          BRANCH="post-rel/$TAG"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
