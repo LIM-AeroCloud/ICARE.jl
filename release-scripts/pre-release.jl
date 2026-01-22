@@ -12,7 +12,6 @@ function get_version()::VersionNumber
     out = Pipe()
     run(pipeline(ignorestatus(`git rev-parse --abbrev-ref HEAD`), stdout=out))
     close(out.in)
-    rel = @async String(read(out))
     rel = String(read(out)) |> chomp
     startswith(rel, "rel/") || throw(ArgumentError("wrong release branch name format: $rel; should start with 'rel/'"))
     return VersionNumber(rel[5:end])
@@ -59,6 +58,7 @@ vstring = "version = "
 vpkg_new = get_version()
 i = findfirst(startswith(vstring), lines)
 m = match(r"\"(?<version>[^\"]+)\"", lines[i])
+isnothing(m) && throw(ArgumentError("package version not found in Project.toml"))
 vpkg_old = VersionNumber(m["version"])
 lines[i] = vstring * "\"$(vpkg_new)\""
 check_update(vpkg_old, vpkg_new, "package")
@@ -86,7 +86,7 @@ badge = joinpath(@__DIR__, "..", "docs", "src", "assets", "badge.svg")
 lines = readlines(badge)
 i = findfirst(contains(r"<text.*>v"), lines)
 if isnothing(i)
-    throw(ArgumentError("No version in badge found in docs/src/assets/badge.svg"))
+    throw(ArgumentError("no version in badge found in docs/src/assets/badge.svg"))
 end
 lines[i] = replace(lines[i], r">v[0-9.]+" => ">v$vpkg_new")
 open(badge, "w+") do io
@@ -98,7 +98,7 @@ readme = joinpath(@__DIR__, "..", "README.md")
 lines = readlines(readme)
 i = findfirst(contains("/v"), lines)
 if isnothing(i)
-    throw(ArgumentError("No version link found in README.md"))
+    throw(ArgumentError("no version link found in README.md"))
 end
 lines[i] = replace(lines[i], r"/v[0-9.]+" => "/v$vpkg_new")
 open(readme, "w+") do io
@@ -110,11 +110,16 @@ end
 changelog = normpath(@__DIR__, "..", "docs", "src", "inventory.md")
 lines = readlines(changelog)
 start = findfirst(contains("## Inventory Changelog"), lines)
+if isnothing(start)
+    @warn "no inventory changelog found in docs; skipping update"
+    exit(-1)
+end
 
 # Find current inventory version in source code
 src = normpath(@__DIR__, "..", "src", "inventory.jl")
 code = read(src, String)
 m = match(r"\"version\"\s*=>\s*v\"(?<version>[^\"]+)\"", code)
+isnothing(m) && throw(ArgumentError("no inventory version found in src/inventory.jl"))
 v_new = VersionNumber(m["version"])
 
 # Loop over inventory changelog, set new version and add links to issues

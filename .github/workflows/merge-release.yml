@@ -62,9 +62,4 @@ jobs:
           EOF
           )"
 
-          echo "PR created successfully"
-      - name: Comment on success
-        if: success()
-        run: |
-          echo "✅ Successfully merged ${{ steps.version.outputs.branch }} to dev"
-          echo "Version ${{ steps.version.outputs.version }} is now ready for release"
+          echo "✅ PR created successfully for release ${{ steps.version.outputs.version }}"

@@ -70,7 +70,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: '✅ Automated merge will proceed after approval and successful CI checks.'
+              body: '✅ Approval and CI checks confirmed. Proceeding with automated merge.'
             });
 
       - name: Enable auto-merge
@@ -84,7 +84,7 @@ jobs:
               pull_number: context.payload.pull_request.number,
               merge_method: 'merge',  // Use merge commit for release PRs
               commit_title: context.payload.pull_request.title,
-              commit_message: 'Automated merge after approval'
+              commit_message: 'Automated merge after approval and successful CI checks'
             });
 
             console.log('PR merged successfully');

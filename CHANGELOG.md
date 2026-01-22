@@ -25,7 +25,7 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Added GitHub Actions scripts and adjusted the pre-release script to completely automate the 
   release process ([#50])
 - Added changelog enforcer GitHub Action to ensure, a changelog entry was made unless the
-  `no-docs` label is set ([#50])
+  `no change` label is set ([#50])
 
 ### Changed
 
@@ -280,3 +280,4 @@ prevent LibCurl error 9
 [#42]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/42
 [#44]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/44
 [#46]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/46
+[#50]: https://github.com/LIM-AeroCloud/ICARE.jl/issues/50
