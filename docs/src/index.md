@@ -48,6 +48,7 @@ Start the package manager by typing `]` in the REPL and add _ICARE.jl_ with:
 Pages = [
     "index.md",
     "download.md",
+    "inventory.md",
     "adaptation.md",
     "release-notes.md",
     "register.md"

@@ -1,0 +1,55 @@
+name: Pre-Release Automation
+
+on:
+  push:
+    branches:
+      - 'rel/**'
+
+jobs:
+  pre-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version detection
+
+      - name: Check if pre-release already ran
+        id: check_marker
+        run: |
+          # Extract version from branch name
+          BRANCH=${GITHUB_REF#refs/heads/}
+          BRANCH_VERSION=${BRANCH#rel/}
+
+          # Check for marker file indicating successful completion
+          MARKER_FILE=".pre-release-complete-v${BRANCH_VERSION}"
+
+          echo "Branch version: $BRANCH_VERSION"
+          echo "Checking for marker file: $MARKER_FILE"
+
+          # Output version for later steps
+          echo "version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
+
+          if [ -f "$MARKER_FILE" ]; then
+            echo "✅ Marker file exists - pre-release already completed successfully"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚙️  Marker file not found - running pre-release"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare release
+        if: steps.check_marker.outputs.skip == 'false'
+        run: |
+          cd release-scripts
+          julia pre-release.jl
+
+      - name: Commit changes
+        if: steps.check_marker.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Set version to ${{ steps.check_marker.outputs.version }}, update documentation"
+          git push

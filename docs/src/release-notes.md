@@ -25,12 +25,11 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - Add new automatic detection for conversion during download. Now, `.hdf` files are converted to
   `.h5`, otherwise conversion is switched off. The `convert` flag in `sftp_download` can still be
   used to enforce conversion to be switched on/off.
-
-### Fixed
-
-- Corrected calculation of inventory stats that was showing a wrong download intent ([#44](https://github.com/LIM-AeroCloud/ICARE.jl/issues/44))
-- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
-  Now symlinks are followed and the correct stats are derived ([#42](https://github.com/LIM-AeroCloud/ICARE.jl/issues/42)).
+- Add release automation for the update of the inventory changelog after version updates ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
+- Added GitHub Actions scripts and adjusted the pre-release script to completely automate the 
+  release process ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
+- Added changelog enforcer GitHub Action to ensure, a changelog entry was made unless the
+  `no change` label is set ([#50](https://github.com/LIM-AeroCloud/ICARE.jl/issues/50))
 
 ### Changed
 
@@ -74,6 +73,12 @@ The format of the release notes follows [Keep a Changelog](https://keepachangelo
 - **Breaking:** Remove kwarg `keepext` from `clean!`. The implementation was buggy working only
   for files in inventory folders not in subfolders and cleaning could be ambiguous with the new
   `logs` option ([#28](https://github.com/LIM-AeroCloud/ICARE.jl/issues/28)).
+
+### Fixed
+
+- Corrected calculation of inventory stats that was showing a wrong download intent ([#44](https://github.com/LIM-AeroCloud/ICARE.jl/issues/44))
+- Corrected output of `inventory_stats`, when files on the remote server are symlinks.
+  Now symlinks are followed and the correct stats are derived ([#42](https://github.com/LIM-AeroCloud/ICARE.jl/issues/42)).
 
 ## [v0.6.0](https://github.com/LIM-AeroCloud/ICARE.jl/releases/tag/v0.6.0) - 2025-12-27
 
