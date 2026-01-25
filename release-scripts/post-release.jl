@@ -31,13 +31,3 @@ lines[i] = vstring * '"' * new_version * '"'
 open(project, "w+") do io
     println.(io, lines)
 end
-
-# Clean up pre-release marker file
-marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(released_version)")
-if isfile(marker_file)
-    rm(marker_file)
-    @info "Removed pre-release marker" file=basename(marker_file)
-else
-    @error "Pre-release marker file not found - pre-release may not have completed successfully" expected=basename(marker_file)
-    exit(1)
-end
