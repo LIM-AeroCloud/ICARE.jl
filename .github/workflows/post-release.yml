@@ -59,13 +59,6 @@ jobs:
           # Stage Project.toml with new version
           git add Project.toml
 
-          # Remove pre-release marker file if it exists (post-release script deletes it)
-          MARKER_FILE=".pre-release-complete-v${{ steps.version.outputs.version }}"
-          if [ ! -f "$MARKER_FILE" ]; then
-            echo "Marker file was removed by post-release script"
-            git add "$MARKER_FILE" 2>/dev/null || true
-          fi
-
           # Extract new version from Project.toml
           NEW_VERSION=$(grep '^version = ' Project.toml | cut -d'"' -f2)
           git commit -m "Bump version to $NEW_VERSION"
@@ -93,16 +86,10 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          BRANCH="post-rel/$TAG"
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "version=$TAG" >> $GITHUB_OUTPUT
-
-      - name: Create Pull Request to dev
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG=${GITHUB_REF#refs/tags/v}
           # Check if PR already exists
           EXISTING_PR=$(gh pr list --head "${{ steps.version.outputs.branch }}" --base dev --json number --jq '.[0].number')
 

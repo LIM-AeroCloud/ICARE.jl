@@ -75,14 +75,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ needs.check-version.outputs.version }}" -m "Release v${{ needs.check-version.outputs.version }}"
+          git tag -a "v${{ needs.check-version.outputs.version }}" -m "v${{ needs.check-version.outputs.version }}"
           git push origin "v${{ needs.check-version.outputs.version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
-          name: Release v${{ needs.check-version.outputs.version }}
+          name: v${{ needs.check-version.outputs.version }}
           body: ${{ steps.changelog.outputs.changes }}
           draft: false
           prerelease: false

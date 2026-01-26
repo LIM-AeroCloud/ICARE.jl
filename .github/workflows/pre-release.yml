@@ -1,4 +1,4 @@
-name: Pre-Release Automation
+name: Release Automation
 
 on:
   push:
@@ -8,48 +8,120 @@ on:
 jobs:
   pre-release:
     runs-on: ubuntu-latest
-
+    outputs:
+      branch: ${{ steps.set_branch.outputs.branch }}
+      version: ${{ steps.set_branch.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for version detection
+          fetch-depth: 0
 
-      - name: Check if pre-release already ran
-        id: check_marker
+      - name: Set branch and version outputs
+        id: set_branch
         run: |
-          # Extract version from branch name
           BRANCH=${GITHUB_REF#refs/heads/}
-          BRANCH_VERSION=${BRANCH#rel/}
+          VERSION=${BRANCH#rel/}
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Check for marker file indicating successful completion
-          MARKER_FILE=".pre-release-complete-v${BRANCH_VERSION}"
-
-          echo "Branch version: $BRANCH_VERSION"
-          echo "Checking for marker file: $MARKER_FILE"
-
-          # Output version for later steps
-          echo "version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
-
-          if [ -f "$MARKER_FILE" ]; then
-            echo "✅ Marker file exists - pre-release already completed successfully"
+      - name: Check if release and automated labels exist
+        id: check_label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          REPO=${{ github.repository }}
+          PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch $BRANCH"
+            echo "skip=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          LABELS=$(gh pr view $PR --json labels --jq '.labels[].name')
+          if echo "$LABELS" | grep -q '^release$' && echo "$LABELS" | grep -q '^automated$'; then
+            echo "Release and automated labels exist"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
-            echo "⚙️  Marker file not found - running pre-release"
+            echo "No release and automated labels found, running pre-release"
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Prepare release
-        if: steps.check_marker.outputs.skip == 'false'
+        if: steps.check_label.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_HEAD_REF: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           cd release-scripts
           julia pre-release.jl
 
+      - name: Set release and automated labels
+        if: steps.check_label.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -n "$PR" ]; then
+            gh pr edit $PR --add-label release,automated
+          fi
+
       - name: Commit changes
-        if: steps.check_marker.outputs.skip == 'false'
+        if: steps.check_label.outputs.skip == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Set version to ${{ steps.check_marker.outputs.version }}, update documentation"
+          git commit -m "Set version to ${{ github.ref_name }}, update documentation"
           git push
+
+  create-pr:
+    needs: pre-release
+    runs-on: ubuntu-latest
+    if: needs.pre-release.outputs.branch != ''
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.pre-release.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Create Pull Request to main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "${{ needs.pre-release.outputs.branch }}" --base main --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for this branch"
+            exit 0
+          fi
+
+          # Create PR
+          gh pr create \
+            --head "${{ needs.pre-release.outputs.branch }}" \
+            --base main \
+            --title "Release ${{ needs.pre-release.outputs.version }}" \
+            --label "release,automated" \
+            --body "$(cat <<'EOF'
+          ## Release ${{ needs.pre-release.outputs.version }}
+
+          This PR merges the release branch \
+          `${{ needs.pre-release.outputs.branch }}` into `main`.
+
+          ✅ Pre-release script has updated version and documentation
+          ✅ CI has passed on the release branch
+
+          ⚠️ **Action required:** Please review and approve this PR to continue the automated release process.
+
+          Once approved and merged:
+          - A git tag `v${{ needs.pre-release.outputs.version }}` will be created on main
+          - A GitHub release will be published
+          - Post-release automation will create a PR to dev with the next DEV version
+          EOF
+          )"
+
+          echo "✅ PR created successfully for release ${{ needs.pre-release.outputs.version }}"
