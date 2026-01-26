@@ -78,7 +78,7 @@ jobs:
 
     steps:
       - name: Wait for CI to complete
-        uses: lewagon/wait-on-check-action@v1.3.1
+        uses: lewagon/wait-on-check-action@v1.5.0
         with:
           ref: ${{ needs.post-release.outputs.branch }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
