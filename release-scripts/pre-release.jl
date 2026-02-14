@@ -68,6 +68,7 @@ open(project, "w+") do io
     println.(io, lines)
 end
 
+
 ## Update Changelog
 changelog = joinpath(@__DIR__, "..", "CHANGELOG.md")
 lines = readlines(changelog)
@@ -149,11 +150,5 @@ check_update(v_old, v_new, "inventory")
 open(changelog, "w+") do io
     println.(io, lines)
 end
-## Create marker file to indicate successful completion
-marker_file = joinpath(@__DIR__, "..", ".pre-release-complete-v$(vpkg_new)")
-open(marker_file, "w") do io
-    println(io, "Pre-release completed successfully for v$(vpkg_new)")
-    println(io, "Timestamp: $(Dates.now())")
-end
 
-@info "Pre-release script completed successfully for v$(vpkg_new)" marker_file
+@info "Pre-release script completed successfully for v$(vpkg_new)"

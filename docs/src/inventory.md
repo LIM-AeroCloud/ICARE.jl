@@ -123,11 +123,11 @@ package and, conversely, breaking changes in the inventory need not necessarily 
 _ICARE_. Therefore, separate versions and changelogs are introduced for the package and its
 inventory.
 
-### [Unreleased]
+### [v2.0.0] - 2026-01-22
 
 #### Added
 
-- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38])
+- Added entry `compression-ratio` to `inventory["metadata"]["database"]["size"]` ([#38](https://github.com/LIM-AeroCloud/ICARE.jl/issues/38))
 
 #### Changed
 
