@@ -26,3 +26,7 @@ julia = "1.10"
 
 [extras]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[sources]
+SFTP={url="https://github.com/LIM-AeroCloud/SFTP.jl.git", rev="main"}
+

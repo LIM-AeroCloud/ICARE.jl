@@ -280,7 +280,15 @@ function convert_file(input::String, output::String)::Nothing
     # Ensure, h5 file does not exist before conversion
     rm(splitext(input)[1]*".h5", force=true)
     # Chose exe for current OS and convert to h5
-    bin = Sys.isapple() ? "h4toh5_mac" : "h4toh5_linux"
+    bin = if Sys.islinux()
+        "h4toh5_linux"
+    elseif Sys.isapple() && Sys.ARCH == :aarch64
+        "h4toh5_arm"
+    elseif Sys.isapple() && Sys.ARCH == :x86_64
+        "h4toh5_mac"
+    else
+        throw(ArgumentError("unsupported OS $(Sys.KERNEL) and architecture $(Sys.ARCH)"))
+    end
     converter = realpath(joinpath(@__DIR__, "..", "assets", bin))
     run(`$converter $input $output`)
     return
