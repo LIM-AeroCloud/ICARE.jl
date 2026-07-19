@@ -13,7 +13,7 @@ jobs:
       version: ${{ steps.set_branch.outputs.version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -83,7 +83,7 @@ jobs:
     if: needs.pre-release.outputs.branch != ''
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.pre-release.outputs.branch }}
           fetch-depth: 0
